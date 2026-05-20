@@ -58,6 +58,17 @@ function getSelectedVertices() {
   return Array.from(uniqueVerts);
 }
 
+function projectToClientCoords(worldPos) {
+  const dom = state.renderer.domElement;
+  const rect = dom.getBoundingClientRect();
+  const v = worldPos.clone().project(state.camera);
+  return {
+    x: rect.left + (v.x + 1) * rect.width / 2,
+    y: rect.top + (-v.y + 1) * rect.height / 2,
+    z: v.z
+  };
+}
+
 export function initEditTools(data, gizmo) {
   editData = data;
   gizmoManager = gizmo;
@@ -73,22 +84,23 @@ export function initEditTools(data, gizmo) {
     // Check if we have selected vertices to drag
     if (state.selectedVertices.size === 0) return;
 
-    const rect = dom.getBoundingClientRect();
-    const mouse = new THREE.Vector2(
-      ((e.clientX - rect.left) / rect.width) * 2 - 1,
-      -((e.clientY - rect.top) / rect.height) * 2 + 1
-    );
+    // Check if the click is near any selected vertex in screen space (threshold = 15 pixels)
+    let clickedVertexIndex = -1;
+    let closestDist = 15;
 
-    const raycaster = new THREE.Raycaster();
-    raycaster.setFromCamera(mouse, state.camera);
+    for (const idx of state.selectedVertices) {
+      const worldPos = editData.getVertexWorldPos(idx);
+      const cp = projectToClientCoords(worldPos);
+      if (cp.z > 1) continue;
 
-    // Check if clicking on a selected vertex pick sphere
-    const selectedSpheres = gizmoManager.vertexPickSpheres.filter(
-      s => state.selectedVertices.has(s.userData.vertexIndex)
-    );
+      const dist = Math.hypot(e.clientX - cp.x, e.clientY - cp.y);
+      if (dist < closestDist) {
+        closestDist = dist;
+        clickedVertexIndex = idx;
+      }
+    }
 
-    const intersects = raycaster.intersectObjects(selectedSpheres, false);
-    if (intersects.length === 0) return;
+    if (clickedVertexIndex === -1) return;
 
     // Start dragging
     isDragging = true;
@@ -97,8 +109,8 @@ export function initEditTools(data, gizmo) {
     // Snapshot current positions for undo
     dragStartPositions = dragVertexIndices.map(idx => editData.getVertexLocalPos(idx));
 
-    // Create drag plane facing camera at hit point
-    const hitPoint = intersects[0].point;
+    // Create drag plane facing camera at the clicked vertex world position
+    const hitPoint = editData.getVertexWorldPos(clickedVertexIndex);
     const cameraDir = new THREE.Vector3();
     state.camera.getWorldDirection(cameraDir);
     dragPlane.setFromNormalAndCoplanarPoint(cameraDir.negate(), hitPoint);
@@ -382,12 +394,12 @@ export function deleteSelectedElements() {
       // 其他模式下，如果點不再被任何面引用（isolated 孤立點），我們也將其一併移除
       const vertexCount = geometry.attributes.position.count;
       const keepVertex = new Uint8Array(vertexCount);
-      
+
       // 標記所有仍在使用的頂點
       for (let i = 0; i < newIndices.length; i++) {
         keepVertex[newIndices[i]] = 1;
       }
-      
+
       // 如果是 vertex 模式，強制將選取要刪除的點設為 0
       if (state.editSubMode === 'vertex') {
         for (const idx of state.selectedVertices) {
@@ -438,49 +450,95 @@ export function deleteSelectedElements() {
         newAttributes[name] = new THREE.BufferAttribute(newArray, itemSize, attr.normalized);
       }
 
-      // 5. 更新 geometry 的屬性與索引
-      // 必須先移除舊屬性以避免與新屬性的頂點數量衝突
-      const attrNames = Object.keys(geometry.attributes);
-      for (const name of attrNames) {
-        geometry.removeAttribute(name);
-      }
+      // 5. 建立全新幾何體以避免 Three.js 的 GPU 快取和 VAO 衝突問題
+      const newGeometry = new THREE.BufferGeometry();
       for (const name in newAttributes) {
-        geometry.setAttribute(name, newAttributes[name]);
+        newGeometry.setAttribute(name, newAttributes[name]);
       }
-      
-      geometry.setIndex(new THREE.BufferAttribute(new Uint32Array(remappedIndices), 1));
+      newGeometry.setIndex(new THREE.BufferAttribute(new Uint32Array(remappedIndices), 1));
+
+      newGeometry.computeVertexNormals();
+      newGeometry.computeBoundingSphere();
+      newGeometry.computeBoundingBox();
+
+      // 釋放舊幾何體，並更新 mesh 引用
+      mesh.geometry.dispose();
+      mesh.geometry = newGeometry;
     }
   } else {
-    // 非索引幾何體 (Fallback)
+    // 非索引幾何體 (Fallback / GLTF/OBJ 導入可能沒有索引)
+    const posAttr = geometry.attributes.position;
+    const vertexCount = posAttr.count;
+    const faceCount = vertexCount / 3;
+    const deletedFaces = new Set();
+
     if (state.editSubMode === 'face' && state.selectedFaces.size > 0) {
-      const posAttr = geometry.attributes.position;
-      const oldPositions = [];
-      for (let i = 0; i < posAttr.count; i++) {
-        oldPositions.push(posAttr.getX(i), posAttr.getY(i), posAttr.getZ(i));
+      for (const faceIdx of state.selectedFaces) {
+        deletedFaces.add(faceIdx);
       }
-      const newPositions = [];
-      for (let i = 0; i < posAttr.count; i += 3) {
-        const faceIdx = i / 3;
-        if (!state.selectedFaces.has(faceIdx)) {
-          newPositions.push(
-            oldPositions[i * 3], oldPositions[i * 3 + 1], oldPositions[i * 3 + 2],
-            oldPositions[(i + 1) * 3], oldPositions[(i + 1) * 3 + 1], oldPositions[(i + 1) * 3 + 2],
-            oldPositions[(i + 2) * 3], oldPositions[(i + 2) * 3 + 1], oldPositions[(i + 2) * 3 + 2]
-          );
+    } else if (state.editSubMode === 'vertex' && state.selectedVertices.size > 0) {
+      for (const vertIdx of state.selectedVertices) {
+        const faceIdx = Math.floor(vertIdx / 3);
+        deletedFaces.add(faceIdx);
+      }
+    } else if (state.editSubMode === 'edge' && state.selectedEdges.size > 0) {
+      for (let f = 0; f < faceCount; f++) {
+        const a = f * 3;
+        const b = f * 3 + 1;
+        const c = f * 3 + 2;
+        const edgeAB = a < b ? `${a}-${b}` : `${b}-${a}`;
+        const edgeBC = b < c ? `${b}-${c}` : `${c}-${b}`;
+        const edgeCA = c < a ? `${c}-${a}` : `${a}-${c}`;
+        if (state.selectedEdges.has(edgeAB) || state.selectedEdges.has(edgeBC) || state.selectedEdges.has(edgeCA)) {
+          deletedFaces.add(f);
         }
       }
-      geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(newPositions), 3));
+    }
+
+    if (deletedFaces.size > 0) {
+      const keptFaceIndices = [];
+      for (let f = 0; f < faceCount; f++) {
+        if (!deletedFaces.has(f)) {
+          keptFaceIndices.push(f);
+        }
+      }
+
+      const newVertexCount = keptFaceIndices.length * 3;
+      const newAttributes = {};
+
+      for (const name in geometry.attributes) {
+        const attr = geometry.attributes[name];
+        const itemSize = attr.itemSize;
+        const oldArray = attr.array;
+        const newArray = new oldArray.constructor(newVertexCount * itemSize);
+
+        let targetIdx = 0;
+        for (const f of keptFaceIndices) {
+          const sourceStart = f * 3 * itemSize;
+          for (let j = 0; j < 3 * itemSize; j++) {
+            newArray[targetIdx * 3 * itemSize + j] = oldArray[sourceStart + j];
+          }
+          targetIdx++;
+        }
+        newAttributes[name] = new THREE.BufferAttribute(newArray, itemSize, attr.normalized);
+      }
+
+      const newGeometry = new THREE.BufferGeometry();
+      for (const name in newAttributes) {
+        newGeometry.setAttribute(name, newAttributes[name]);
+      }
+
+      newGeometry.computeVertexNormals();
+      newGeometry.computeBoundingSphere();
+      newGeometry.computeBoundingBox();
+
+      mesh.geometry.dispose();
+      mesh.geometry = newGeometry;
       changed = true;
     }
   }
 
   if (changed) {
-    geometry.computeBoundingSphere();
-    geometry.computeBoundingBox();
-
-    // 釋放舊的 WebGL 快取，強制 GPU 重新生成頂點和索引緩衝區
-    geometry.dispose();
-
     // Push undo command
     const cmd = new DeleteElementCommand(mesh, geometrySnapshot, positionsSnapshot, editData, gizmoManager);
     state.history.undoStack.push(cmd);

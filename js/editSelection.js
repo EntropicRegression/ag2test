@@ -35,12 +35,20 @@ export function initEditSelection(data, gizmo) {
   const dom = state.renderer.domElement;
 
   onPointerDown = (e) => {
+    console.log("[editSelection] onPointerDown triggered. clientX:", e.clientX, "clientY:", e.clientY, "editorMode:", state.editorMode, "isActive:", isActive);
     if (!isActive || state.editorMode !== 'edit') return;
     if (e.button !== 0) return;
 
-    // 檢查點擊位置是否在 Transform Gizmo 上
+    // 檢查點擊位置是否在 Transform Gizmo 上 (結合 hovered axis 與手動過濾後的射線求交)
     if (state.transformControls) {
       try {
+        if (state.transformControls.axis) {
+          console.log("[editSelection] Pointer down hit Transform Gizmo axis:", state.transformControls.axis);
+          pointerDownPos = null;
+          isBoxSelecting = false;
+          return;
+        }
+
         const rect = dom.getBoundingClientRect();
         const mouse = new THREE.Vector2(
           ((e.clientX - rect.left) / rect.width) * 2 - 1,
@@ -48,17 +56,22 @@ export function initEditSelection(data, gizmo) {
         );
         const raycaster = new THREE.Raycaster();
         raycaster.setFromCamera(mouse, state.camera);
-        
+
         const gizmoHelper = state.transformControls.getHelper();
-        const gizmoIntersects = raycaster.intersectObject(gizmoHelper, true);
+        const gizmoIntersects = raycaster.intersectObject(gizmoHelper, true).filter(hit => {
+          return hit.object.visible &&
+            hit.object.type !== 'TransformControlsPlane' &&
+            hit.object.name.indexOf('plane') === -1;
+        });
+
         if (gizmoIntersects.length > 0) {
-          // 正在操作或點選 Gizmo，不啟動框選
+          console.log("[editSelection] Pointer down hit visible Transform Gizmo. Ignoring.");
           pointerDownPos = null;
           isBoxSelecting = false;
           return;
         }
       } catch (err) {
-        // 忽略射線相交錯誤
+        console.error("[editSelection] Error checking Transform Gizmo hit:", err);
       }
     }
 
@@ -95,11 +108,13 @@ export function initEditSelection(data, gizmo) {
   };
 
   onPointerUp = (e) => {
+    console.log("[editSelection] onPointerUp triggered. clientX:", e.clientX, "clientY:", e.clientY, "pointerDownPos:", pointerDownPos);
     if (!isActive || state.editorMode !== 'edit') return;
     if (e.button !== 0) return;
 
     // 如果正在拖拽 Gizmo，阻斷並清空框選狀態
     if (state.transformControls && state.transformControls.dragging) {
+      console.log("[editSelection] TransformControls dragging is true, bypassing.");
       pointerDownPos = null;
       isBoxSelecting = false;
       if (boxSelectDiv) boxSelectDiv.style.display = 'none';
@@ -116,9 +131,11 @@ export function initEditSelection(data, gizmo) {
 
     if (dist <= BOX_THRESHOLD) {
       // 點擊選取（單一元素）
+      console.log("[editSelection] Clicking element, dist:", dist);
       handleClickSelect(e, shiftKey);
     } else {
       // 框選
+      console.log("[editSelection] Box selecting elements, dist:", dist);
       handleBoxSelect(e, shiftKey);
     }
 
@@ -190,12 +207,14 @@ function handleClickSelect(e, shiftKey) {
   const raycaster = new THREE.Raycaster();
   raycaster.setFromCamera(mouse, state.camera);
 
+  console.log("[editSelection] handleClickSelect. subMode:", state.editSubMode, "mouse:", mouse);
+
   switch (state.editSubMode) {
     case 'vertex':
-      clickSelectVertex(raycaster, shiftKey);
+      clickSelectVertex(shiftKey, e.clientX, e.clientY);
       break;
     case 'edge':
-      clickSelectEdge(raycaster, shiftKey);
+      clickSelectEdge(shiftKey, e.clientX, e.clientY);
       break;
     case 'face':
       clickSelectFace(raycaster, shiftKey);
@@ -253,8 +272,8 @@ function projectToScreen(worldPos) {
 
 function isInBox(screenPos, left, right, top, bottom) {
   return screenPos.z >= -1 && screenPos.z <= 1 &&
-         screenPos.x >= left && screenPos.x <= right &&
-         screenPos.y >= top && screenPos.y <= bottom;
+    screenPos.x >= left && screenPos.x <= right &&
+    screenPos.y >= top && screenPos.y <= bottom;
 }
 
 // ---- VERTEX BOX SELECT ----
@@ -309,26 +328,70 @@ function boxSelectFaces(left, right, top, bottom) {
   state.notifyEditSelectionChanged();
 }
 
+// ---- SCREEN SPACE HELPERS ----
+function projectToClientCoords(worldPos) {
+  const dom = state.renderer.domElement;
+  const rect = dom.getBoundingClientRect();
+  const v = worldPos.clone().project(state.camera);
+  return {
+    x: rect.left + (v.x + 1) * rect.width / 2,
+    y: rect.top + (-v.y + 1) * rect.height / 2,
+    z: v.z
+  };
+}
+
+function distancePointToSegment2D(px, py, x1, y1, x2, y2) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const lenSq = dx * dx + dy * dy;
+
+  if (lenSq < 1e-6) {
+    return Math.hypot(px - x1, py - y1);
+  }
+
+  let t = ((px - x1) * dx + (py - y1) * dy) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+
+  const closestX = x1 + t * dx;
+  const closestY = y1 + t * dy;
+
+  return Math.hypot(px - closestX, py - closestY);
+}
+
 // ---- CLICK SELECT VERTEX ----
-function clickSelectVertex(raycaster, shiftKey) {
+function clickSelectVertex(shiftKey, clientX, clientY) {
   if (!editData || !gizmoManager) return;
 
-  const pickTargets = gizmoManager.vertexPickSpheres;
-  const intersects = raycaster.intersectObjects(pickTargets, false);
+  const positionsCount = editData.positions.length;
+  let closestVertexIndex = -1;
+  let closestDist = 15; // 15 pixels threshold
 
-  if (intersects.length > 0) {
-    const hit = intersects[0].object;
-    const vertexIndex = hit.userData.vertexIndex;
+  for (let i = 0; i < positionsCount; i++) {
+    const worldPos = editData.getVertexWorldPos(i);
+    const cp = projectToClientCoords(worldPos);
 
+    // Skip if behind camera
+    if (cp.z > 1) continue;
+
+    const dist = Math.hypot(clientX - cp.x, clientY - cp.y);
+    if (dist < closestDist) {
+      closestDist = dist;
+      closestVertexIndex = i;
+    }
+  }
+
+  console.log("[editSelection] clickSelectVertex. closestVertexIndex:", closestVertexIndex, "closestDist:", closestDist);
+
+  if (closestVertexIndex !== -1) {
     if (shiftKey) {
-      if (state.selectedVertices.has(vertexIndex)) {
-        state.selectedVertices.delete(vertexIndex);
+      if (state.selectedVertices.has(closestVertexIndex)) {
+        state.selectedVertices.delete(closestVertexIndex);
       } else {
-        state.selectedVertices.add(vertexIndex);
+        state.selectedVertices.add(closestVertexIndex);
       }
     } else {
       state.selectedVertices.clear();
-      state.selectedVertices.add(vertexIndex);
+      state.selectedVertices.add(closestVertexIndex);
     }
   } else {
     if (!shiftKey) {
@@ -341,24 +404,32 @@ function clickSelectVertex(raycaster, shiftKey) {
 }
 
 // ---- CLICK SELECT EDGE ----
-function clickSelectEdge(raycaster, shiftKey) {
+function clickSelectEdge(shiftKey, clientX, clientY) {
   if (!editData || !gizmoManager) return;
 
   const edges = editData.edges;
   let closestEdgeKey = null;
-  let closestDist = 0.3;
+  let closestDist = 15; // 15 pixels threshold
 
-  const ray = raycaster.ray;
+  console.log("[editSelection] clickSelectEdge. Edges count:", edges.length);
 
   for (const edge of edges) {
     const p1 = editData.getVertexWorldPos(edge.v1);
     const p2 = editData.getVertexWorldPos(edge.v2);
-    const dist = distanceRayToSegment(ray, p1, p2);
+
+    const cp1 = projectToClientCoords(p1);
+    const cp2 = projectToClientCoords(p2);
+
+    if (cp1.z > 1 || cp2.z > 1) continue;
+
+    const dist = distancePointToSegment2D(clientX, clientY, cp1.x, cp1.y, cp2.x, cp2.y);
     if (dist < closestDist) {
       closestDist = dist;
       closestEdgeKey = edge.key;
     }
   }
+
+  console.log("[editSelection] closestEdgeKey:", closestEdgeKey, "closestDist:", closestDist);
 
   if (closestEdgeKey) {
     if (shiftKey) {
@@ -385,11 +456,27 @@ function clickSelectEdge(raycaster, shiftKey) {
 function clickSelectFace(raycaster, shiftKey) {
   if (!editData) return;
 
-  const intersects = raycaster.intersectObject(editData.mesh, false);
+  const mesh = editData.mesh;
+  const isWireframe = mesh.material.wireframe;
+
+  // Temporarily disable wireframe to allow solid raycasting
+  if (isWireframe) {
+    mesh.material.wireframe = false;
+  }
+
+  console.log("[editSelection] clickSelectFace. Target mesh:", mesh.name);
+  const intersects = raycaster.intersectObject(mesh, false);
+  console.log("[editSelection] clickSelectFace. Intersects count:", intersects.length);
+
+  // Restore wireframe state
+  if (isWireframe) {
+    mesh.material.wireframe = true;
+  }
 
   if (intersects.length > 0) {
     const hit = intersects[0];
     let faceIndex = hit.faceIndex;
+    console.log("[editSelection] Hit face index:", faceIndex);
 
     if (faceIndex !== undefined && faceIndex !== null) {
       if (shiftKey) {
