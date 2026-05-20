@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NeoWire 3D - 未來感 3D 線框模型編輯器</title>
+  <!-- Google Fonts Outfit & Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <!-- Lucide Icons for premium look -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <link rel="stylesheet" href="index.css">
+  
+  <!-- Import maps polyfill -->
+  <script async src="https://unpkg.com/es-module-shims@1.6.3/dist/es-module-shims.js"></script>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="app">
+    <!-- Top Toolbar -->
+    <header class="toolbar">
+      <div class="logo">
+        <i data-lucide="box" class="logo-icon"></i>
+        <span>NEO<span>WIRE</span> 3D</span>
+      </div>
+      
+      <div class="divider"></div>
+      
+      <div class="btn-group">
+        <button id="btn-add-menu" class="btn" title="新增物件 (A)">
+          <i data-lucide="plus"></i>
+          <span>新增</span>
+          <i data-lucide="chevron-down" class="chevron"></i>
+        </button>
+        <!-- Add dropdown menu -->
+        <div id="add-menu" class="dropdown-menu hidden">
+          <div class="menu-section-title">基本幾何體</div>
+          <button class="menu-item" data-add="box"><i data-lucide="square"></i>立方體 Cube</button>
+          <button class="menu-item" data-add="sphere"><i data-lucide="circle"></i>球體 Sphere</button>
+          <button class="menu-item" data-add="cylinder"><i data-lucide="cylinder"></i>圓柱體 Cylinder</button>
+          <button class="menu-item" data-add="cone"><i data-lucide="triangle"></i>圓錐體 Cone</button>
+          <button class="menu-item" data-add="torus"><i data-lucide="donut"></i>圓環體 Torus</button>
+          <button class="menu-item" data-add="plane"><i data-lucide="layers"></i>平面 Plane</button>
+          <div class="menu-section-title">燈光 & 組件</div>
+          <button class="menu-item" data-add="point-light"><i data-lucide="lightbulb"></i>點光源 Point Light</button>
+          <button class="menu-item" data-add="dir-light"><i data-lucide="sun"></i>平行光 Directional Light</button>
+          <button class="menu-item" data-add="ambient-light"><i data-lucide="globe"></i>環境光 Ambient Light</button>
+          <button class="menu-item" data-add="group"><i data-lucide="folder-plus"></i>空群組 Group</button>
+        </div>
+
+        <button id="btn-delete" class="btn btn-danger" title="刪除選中物件 (Del)">
+          <i data-lucide="trash-2"></i>
+          <span>刪除</span>
+        </button>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- Transform mode toggles -->
+      <div class="btn-group radio-group">
+        <button id="btn-mode-translate" class="btn active" title="移動模式 (T)">
+          <i data-lucide="move"></i>
+          <span>移動</span>
+        </button>
+        <button id="btn-mode-rotate" class="btn" title="旋轉模式 (R)">
+          <i data-lucide="rotate-cw"></i>
+          <span>旋轉</span>
+        </button>
+        <button id="btn-mode-scale" class="btn" title="縮放模式 (S)">
+          <i data-lucide="maximize-2"></i>
+          <span>縮放</span>
+        </button>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- History Controls -->
+      <div class="btn-group">
+        <button id="btn-undo" class="btn" title="復原 (Ctrl+Z)" disabled>
+          <i data-lucide="undo-2"></i>
+        </button>
+        <button id="btn-redo" class="btn" title="重做 (Ctrl+Y)" disabled>
+          <i data-lucide="redo-2"></i>
+        </button>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- Colors & Effects -->
+      <div class="btn-group">
+        <button id="btn-color-menu" class="btn" title="快速 wireframe 顏色">
+          <span class="color-preview-circle"></span>
+          <span>顏色</span>
+          <i data-lucide="chevron-down" class="chevron"></i>
+        </button>
+        
+        <!-- Floating Color Palette -->
+        <div id="color-menu" class="dropdown-menu color-picker-menu hidden">
+          <div class="menu-section-title">快速預設色 (數字鍵 1-6)</div>
+          <div class="color-palette-grid">
+            <button class="palette-swatch" style="background-color: #00ffff;" data-color="#00ffff" title="[1] 亮青"></button>
+            <button class="palette-swatch" style="background-color: #bf00ff;" data-color="#bf00ff" title="[2] 霓虹紫"></button>
+            <button class="palette-swatch" style="background-color: #39ff14;" data-color="#39ff14" title="[3] 螢光綠"></button>
+            <button class="palette-swatch" style="background-color: #ff6600;" data-color="#ff6600" title="[4] 暖橙"></button>
+            <button class="palette-swatch" style="background-color: #ff0066;" data-color="#ff0066" title="[5] 熱粉"></button>
+            <button class="palette-swatch" style="background-color: #e0e0ff;" data-color="#e0e0ff" title="[6] 冷白"></button>
+          </div>
+          <div class="menu-section-title">自訂色彩</div>
+          <div class="custom-color-row">
+            <input type="color" id="custom-color-input" value="#00ffff">
+            <span id="custom-color-text">#00ffff</span>
+          </div>
+          <div class="menu-section-title">套用範圍</div>
+          <div class="radio-option">
+            <input type="radio" id="color-target-selected" name="color-target" value="selected" checked>
+            <label for="color-target-selected">僅套用到選中物件</label>
+          </div>
+          <div class="radio-option">
+            <input type="radio" id="color-target-all" name="color-target" value="all">
+            <label for="color-target-all">套用到所有物件（全域）</label>
+          </div>
+        </div>
+
+        <button id="btn-toggle-bloom" class="btn active" title="開關發光輝光效果 (B)">
+          <i data-lucide="sparkles"></i>
+          <span>輝光</span>
+        </button>
+        <div id="bloom-strength-container" class="bloom-slider-container">
+          <span class="slider-label">強度</span>
+          <input type="range" id="bloom-strength-slider" min="0" max="4" step="0.1" value="1.6" title="調節發光強度">
+          <span id="bloom-strength-value" class="slider-value">1.6</span>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- Import/Export -->
+      <div class="btn-group">
+        <button id="btn-import-trigger" class="btn" title="匯入 GLTF / OBJ / FBX 模型">
+          <i data-lucide="file-down"></i>
+          <span>匯入</span>
+        </button>
+        <input type="file" id="import-input" accept=".gltf,.glb,.obj,.fbx" multiple style="display: none;">
+        
+        <button id="btn-export" class="btn btn-primary" title="匯出為 GLB 檔案">
+          <i data-lucide="file-up"></i>
+          <span>匯出</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Workspace Container -->
+    <main class="workspace">
+      <!-- Left Panel: Scene Hierarchy -->
+      <section class="sidebar left-panel">
+        <div class="panel-header">
+          <i data-lucide="list-tree"></i>
+          <h2>場景階層 (Hierarchy)</h2>
+        </div>
+        <div class="panel-content scrollable" id="hierarchy-container">
+          <ul class="tree-root" id="hierarchy-tree">
+            <!-- Populated dynamically via JS -->
+          </ul>
+        </div>
+      </section>
+
+      <!-- Center: 3D Viewport -->
+      <section class="viewport-container" id="canvas-container">
+        <!-- 3D Canvas will be appended here -->
+        
+        <!-- Viewport instructions Overlay -->
+        <div class="viewport-overlay">
+          <div class="hint-item"><kbd>滑鼠右鍵</kbd> 旋轉視角</div>
+          <div class="hint-item"><kbd>滑鼠中鍵</kbd> 移動視角</div>
+          <div class="hint-item"><kbd>滑鼠左鍵</kbd> 選擇物件 / 拖動 Gizmo</div>
+        </div>
+      </section>
+
+      <!-- Right Panel: Object Properties -->
+      <section class="sidebar right-panel">
+        <div class="panel-header">
+          <i data-lucide="sliders"></i>
+          <h2>物件屬性 (Properties)</h2>
+        </div>
+        <div class="panel-content scrollable" id="properties-container">
+          <div id="no-selection-message" class="empty-state">
+            <i data-lucide="mouse-pointer-click"></i>
+            <p>請在場景或階層面板中選擇一個物件來編輯其屬性</p>
+          </div>
+          
+          <div id="properties-panel" class="hidden">
+            <div class="property-group">
+              <label for="prop-name">物件名稱</label>
+              <div class="input-control">
+                <input type="text" id="prop-name" placeholder="名稱">
+              </div>
+            </div>
+
+            <div class="property-group">
+              <h3>位置 (Position)</h3>
+              <div class="vector3-inputs">
+                <div class="field">
+                  <span>X</span>
+                  <input type="number" id="prop-pos-x" step="0.1">
+                </div>
+                <div class="field">
+                  <span>Y</span>
+                  <input type="number" id="prop-pos-y" step="0.1">
+                </div>
+                <div class="field">
+                  <span>Z</span>
+                  <input type="number" id="prop-pos-z" step="0.1">
+                </div>
+              </div>
+            </div>
+
+            <div class="property-group">
+              <h3>旋轉 (Rotation)</h3>
+              <div class="vector3-inputs">
+                <div class="field">
+                  <span>X°</span>
+                  <input type="number" id="prop-rot-x" step="1">
+                </div>
+                <div class="field">
+                  <span>Y°</span>
+                  <input type="number" id="prop-rot-y" step="1">
+                </div>
+                <div class="field">
+                  <span>Z°</span>
+                  <input type="number" id="prop-rot-z" step="1">
+                </div>
+              </div>
+            </div>
+
+            <div class="property-group">
+              <h3>縮放 (Scale)</h3>
+              <div class="vector3-inputs">
+                <div class="field">
+                  <span>X</span>
+                  <input type="number" id="prop-scale-x" step="0.1">
+                </div>
+                <div class="field">
+                  <span>Y</span>
+                  <input type="number" id="prop-scale-y" step="0.1">
+                </div>
+                <div class="field">
+                  <span>Z</span>
+                  <input type="number" id="prop-scale-z" step="0.1">
+                </div>
+              </div>
+            </div>
+
+            <div class="property-group material-properties">
+              <label for="prop-color">線框顏色</label>
+              <div class="input-control color-input-control">
+                <input type="color" id="prop-color">
+                <span id="prop-color-hex">#00ffff</span>
+              </div>
+            </div>
+
+            <div class="property-group checkbox-property">
+              <label class="toggle-control">
+                <input type="checkbox" id="prop-visible" checked>
+                <span class="toggle-track"></span>
+                <span>顯示物件</span>
+              </label>
+            </div>
+            
+            <div class="property-group light-properties hidden">
+              <label for="prop-light-intensity">燈光強度 (Intensity)</label>
+              <div class="input-control">
+                <input type="number" id="prop-light-intensity" step="0.1" min="0">
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Bottom Status Bar -->
+    <footer class="status-bar">
+      <div class="status-left">
+        <span class="status-item"><i data-lucide="info" class="inline-icon"></i> 準備就緒</span>
+        <span class="status-item separator">|</span>
+        <span class="status-item" id="status-selection">無選取物件</span>
+      </div>
+      <div class="status-right">
+        <span class="status-item" id="status-undo-depth">復原步驟: 0</span>
+        <span class="status-item separator">|</span>
+        <span class="status-item" id="status-object-count">物件總數: 0</span>
+        <span class="status-item separator">|</span>
+        <span class="status-item" id="status-fps">FPS: --</span>
+      </div>
+    </footer>
+  </div>
+
+  <!-- Loading Overlay -->
+  <div id="loading-overlay" class="hidden">
+    <div class="spinner-container">
+      <div class="neon-spinner"></div>
+      <p id="loading-text">正在匯入模型，請稍候...</p>
+    </div>
+  </div>
+
+  <!-- Main script entry -->
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
