@@ -246,6 +246,131 @@ export class BatchColorCommand extends Command {
   }
 }
 
+// 8. Vertex Move Command (Edit Mode)
+export class VertexMoveCommand extends Command {
+  constructor(mesh, vertexIndices, oldPositions, newPositions, editData, gizmoManager) {
+    super();
+    this.name = `移動頂點 (${vertexIndices.length}個)`;
+    this.mesh = mesh;
+    this.vertexIndices = vertexIndices;
+    this.oldPositions = oldPositions;  // THREE.Vector3[]
+    this.newPositions = newPositions;  // THREE.Vector3[]
+    this.editData = editData;
+    this.gizmoManager = gizmoManager;
+  }
+
+  execute() {
+    this._applyPositions(this.newPositions);
+  }
+
+  undo() {
+    this._applyPositions(this.oldPositions);
+  }
+
+  _applyPositions(positions) {
+    const posAttr = this.mesh.geometry.attributes.position;
+    for (let i = 0; i < this.vertexIndices.length; i++) {
+      const idx = this.vertexIndices[i];
+      const pos = positions[i];
+      posAttr.setXYZ(idx, pos.x, pos.y, pos.z);
+      if (this.editData && this.editData.positions[idx]) {
+        this.editData.positions[idx] = { x: pos.x, y: pos.y, z: pos.z };
+      }
+    }
+    posAttr.needsUpdate = true;
+    this.mesh.geometry.computeBoundingSphere();
+    this.mesh.geometry.computeBoundingBox();
+
+    if (this.gizmoManager) {
+      this.gizmoManager.refreshPositions();
+    }
+    state.notifyEditSelectionChanged();
+  }
+}
+
+// 9. Delete Element Command (Edit Mode) — uses geometry snapshot for reliable undo
+export class DeleteElementCommand extends Command {
+  constructor(mesh, geometrySnapshot, positionsSnapshot, editData, gizmoManager) {
+    super();
+    this.name = '刪除子元素';
+    this.mesh = mesh;
+    this.geometrySnapshot = geometrySnapshot; // geometry.clone() before deletion
+    this.positionsSnapshot = positionsSnapshot;
+    this.currentGeometry = mesh.geometry.clone(); // geometry after deletion
+    this.editData = editData;
+    this.gizmoManager = gizmoManager;
+  }
+
+  execute() {
+    // Apply the deleted geometry (already applied when command was created)
+    this._setGeometry(this.currentGeometry.clone());
+  }
+
+  undo() {
+    // Restore the snapshot
+    this._setGeometry(this.geometrySnapshot.clone());
+  }
+
+  _setGeometry(geom) {
+    this.mesh.geometry.dispose();
+    this.mesh.geometry = geom;
+
+    // Re-parse and rebuild gizmos if in edit mode
+    if (this.editData && state.editorMode === 'edit') {
+      this.editData.positions = [];
+      this.editData.edges = [];
+      this.editData.faces = [];
+      this.editData.edgeSet.clear();
+      this.editData.mesh = this.mesh;
+      this.editData.parse();
+
+      if (this.gizmoManager) {
+        this.gizmoManager.build(this.editData);
+      }
+    }
+  }
+}
+
+// 10. Add Face Command (Edit Mode)
+export class AddFaceCommand extends Command {
+  constructor(mesh, geometrySnapshot, positionsSnapshot, editData, gizmoManager) {
+    super();
+    this.name = '新增面';
+    this.mesh = mesh;
+    this.geometrySnapshot = geometrySnapshot;
+    this.positionsSnapshot = positionsSnapshot;
+    this.currentGeometry = mesh.geometry.clone();
+    this.editData = editData;
+    this.gizmoManager = gizmoManager;
+  }
+
+  execute() {
+    this._setGeometry(this.currentGeometry.clone());
+  }
+
+  undo() {
+    this._setGeometry(this.geometrySnapshot.clone());
+  }
+
+  _setGeometry(geom) {
+    this.mesh.geometry.dispose();
+    this.mesh.geometry = geom;
+
+    if (this.editData && state.editorMode === 'edit') {
+      this.editData.positions = [];
+      this.editData.edges = [];
+      this.editData.faces = [];
+      this.editData.edgeSet.clear();
+      this.editData.mesh = this.mesh;
+      this.editData.parse();
+
+      if (this.gizmoManager) {
+        this.gizmoManager.build(this.editData);
+      }
+    }
+  }
+}
+
 // History stack controller
 export class HistoryManager {
   constructor(maxSteps = 100) {

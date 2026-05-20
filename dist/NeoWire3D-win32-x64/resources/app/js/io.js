@@ -121,6 +121,7 @@ export function triggerExport() {
       child.type !== 'TransformControlsGizmo' &&
       !(child.constructor && child.constructor.name === 'TransformControls') &&
       child.name !== 'LightHelper' &&
+      child.name !== '__EditModeHelpers__' &&
       child.type !== 'TransformControlsPlane'
     ) {
       // Find and remove lights helpers temporarily from child lights

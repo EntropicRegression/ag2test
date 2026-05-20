@@ -82,6 +82,42 @@
 
       <div class="divider"></div>
 
+      <!-- Edit Mode Toggle + Sub-modes -->
+      <div class="btn-group" id="edit-mode-group">
+        <button id="btn-edit-toggle" class="btn" title="切換編輯模式 (Tab)">
+          <i data-lucide="pen-tool"></i>
+          <span>編輯模式</span>
+        </button>
+
+        <!-- Sub-mode switcher (visible only in Edit Mode) -->
+        <div id="edit-sub-modes" class="btn-group radio-group hidden">
+          <button id="btn-sub-vertex" class="btn active" title="頂點模式 (1)">
+            <i data-lucide="circle-dot"></i>
+            <span>頂點</span>
+          </button>
+          <button id="btn-sub-edge" class="btn" title="邊模式 (2)">
+            <i data-lucide="minus"></i>
+            <span>邊</span>
+          </button>
+          <button id="btn-sub-face" class="btn" title="面模式 (3)">
+            <i data-lucide="triangle"></i>
+            <span>面</span>
+          </button>
+        </div>
+
+        <!-- Edit tools (visible only in Edit Mode) -->
+        <div id="edit-tools-group" class="btn-group hidden">
+          <button id="btn-edit-delete" class="btn btn-danger" title="刪除選中元素 (X)">
+            <i data-lucide="x"></i>
+            <span>刪除元素</span>
+          </button>
+          <button id="btn-edit-fill" class="btn" title="由選取頂點建立面 (F)">
+            <i data-lucide="pentagon"></i>
+            <span>建立面</span>
+          </button>
+        </div>
+      </div>
+
       <!-- History Controls -->
       <div class="btn-group">
         <button id="btn-undo" class="btn" title="復原 (Ctrl+Z)" disabled>
@@ -288,9 +324,10 @@
     <!-- Bottom Status Bar -->
     <footer class="status-bar">
       <div class="status-left">
-        <span class="status-item"><i data-lucide="info" class="inline-icon"></i> 準備就緒</span>
+        <span class="status-item" id="status-editor-mode"><i data-lucide="box" class="inline-icon"></i> 物件模式</span>
         <span class="status-item separator">|</span>
         <span class="status-item" id="status-selection">無選取物件</span>
+        <span class="status-item" id="status-edit-info" class="hidden"></span>
       </div>
       <div class="status-right">
         <span class="status-item" id="status-undo-depth">復原步驟: 0</span>

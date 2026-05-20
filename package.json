@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "start": "electron .",
-    "pack": "electron-packager . NeoWire3D --platform=win32 --arch=x64 --out=dist --overwrite --ignore=\"dist|\\.git|ag2test\\.code-workspace|implementation_plan\\.md|task\\.md|walkthrough\\.md\""
+    "build": "electron-packager . NeoWire3D --platform=win32 --arch=x64 --out=dist --overwrite --ignore=\"dist|\\.git|\\.gitignore|ag2test\\.code-workspace\"",
+    "pack": "electron-packager . NeoWire3D --platform=win32 --arch=x64 --out=dist --overwrite --ignore=\"dist|\\.git|\\.gitignore|ag2test\\.code-workspace\""
   },
   "devDependencies": {
     "electron": "^30.0.0",

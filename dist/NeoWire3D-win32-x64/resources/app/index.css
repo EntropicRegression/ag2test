@@ -925,6 +925,93 @@ kbd {
   letter-spacing: 0.5px;
 }
 
+/* --- EDIT MODE STYLES --- */
+
+/* Edit Mode toggle button when active */
+#btn-edit-toggle.active {
+  background: rgba(255, 140, 50, 0.2);
+  border-color: #ff8c32;
+  color: #ff8c32;
+  box-shadow: 0 0 8px rgba(255, 140, 50, 0.3);
+}
+
+#btn-edit-toggle.active:hover {
+  background: rgba(255, 140, 50, 0.3);
+}
+
+/* Edit sub-mode buttons */
+#edit-sub-modes .btn.active {
+  background: rgba(255, 140, 50, 0.15);
+  border-color: rgba(255, 140, 50, 0.5);
+  color: #ffaa55;
+}
+
+#edit-sub-modes .btn:hover {
+  background: rgba(255, 140, 50, 0.1);
+  border-color: rgba(255, 140, 50, 0.3);
+}
+
+/* Edit tools button group */
+#edit-tools-group {
+  margin-left: 4px;
+}
+
+#edit-tools-group .btn {
+  font-size: 12px;
+}
+
+/* Viewport edit mode border indicator */
+.viewport-container.edit-mode {
+  box-shadow: inset 0 0 0 2px rgba(255, 140, 50, 0.5);
+}
+
+.viewport-container.edit-mode::after {
+  content: '編輯模式 EDIT MODE';
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(255, 140, 50, 0.15);
+  border: 1px solid rgba(255, 140, 50, 0.4);
+  color: #ffaa55;
+  font-family: var(--font-title);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  padding: 3px 14px;
+  border-radius: 4px;
+  pointer-events: none;
+  z-index: 10;
+  backdrop-filter: blur(4px);
+  animation: editModeIndicatorPulse 2s ease-in-out infinite;
+}
+
+@keyframes editModeIndicatorPulse {
+  0%, 100% { opacity: 0.8; }
+  50% { opacity: 1; }
+}
+
+/* Status bar edit mode highlight */
+#status-editor-mode.edit-active {
+  color: #ff8c32;
+  font-weight: 600;
+}
+
+#status-edit-info {
+  color: #ffaa55;
+  font-weight: 500;
+}
+
+/* --- BOX SELECT OVERLAY --- */
+#box-select-overlay {
+  position: absolute;
+  border: 1.5px dashed rgba(100, 180, 255, 0.8);
+  background: rgba(60, 140, 255, 0.12);
+  pointer-events: none;
+  z-index: 50;
+  box-shadow: 0 0 8px rgba(60, 140, 255, 0.2);
+}
+
 /* Utility Hidden */
 .hidden {
   display: none !important;

@@ -21,6 +21,9 @@ export function initSelection() {
     // Only handle left clicks for selection
     if (e.button !== 0) return;
 
+    // In Edit Mode, selection is handled by editSelection.js
+    if (state.editorMode === 'edit') return;
+
     // Check if clicking on TransformControls gizmo handles (handled by TransformControls itself)
     if (state.transformControls && state.transformControls.dragging) return;
 
@@ -62,7 +65,9 @@ export function initSelection() {
         !obj.isGridHelper &&
         !obj.isAxesHelper &&
         !excludeSet.has(obj) &&
-        obj.name !== 'LightHelper'
+        obj.name !== 'LightHelper' &&
+        obj.name !== '__EditModeHelpers__' &&
+        !obj.userData.isEditPickHelper
       ) {
         targets.push(obj);
       }

@@ -8,6 +8,7 @@ import { initToolbar } from './toolbar.js';
 import { initHierarchy } from './hierarchy.js';
 import { initProperties } from './properties.js';
 import { initBloom } from './bloom.js';
+import { initEditMode } from './editMode.js';
 
 // Setup elements
 const container = document.getElementById('canvas-container');
@@ -78,6 +79,7 @@ function init() {
   initToolbar();
   initHierarchy();
   initProperties();
+  initEditMode();
 
   // 8. Event Listeners
   window.addEventListener('resize', onWindowResize);
@@ -139,8 +141,16 @@ function animate() {
   // Update Object Count
   let count = 0;
   state.scene.traverse(child => {
-    if (child !== state.scene && !child.isGridHelper && !child.isAxesHelper) {
-      count++;
+    if (child !== state.scene && !child.isGridHelper && !child.isAxesHelper
+        && child.name !== '__EditModeHelpers__' && !child.userData.isEditPickHelper) {
+      // Skip children of edit mode helpers group
+      let isEditChild = false;
+      let p = child.parent;
+      while (p && p !== state.scene) {
+        if (p.name === '__EditModeHelpers__') { isEditChild = true; break; }
+        p = p.parent;
+      }
+      if (!isEditChild) count++;
     }
   });
   statusCount.textContent = `物件總數: ${count}`;

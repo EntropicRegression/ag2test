@@ -52,6 +52,7 @@ export function initControls() {
   transformControls.addEventListener('mouseDown', () => {
     const targetObj = transformControls.object;
     if (targetObj) {
+      if (targetObj.name === '__EditGizmoTarget__') return; // Handled by editTools.js
       oldTransformState = {
         position: targetObj.position.clone(),
         rotation: targetObj.rotation.clone(),
@@ -63,6 +64,7 @@ export function initControls() {
   transformControls.addEventListener('mouseUp', () => {
     const targetObj = transformControls.object;
     if (targetObj && oldTransformState) {
+      if (targetObj.name === '__EditGizmoTarget__') return; // Handled by editTools.js
       const newTransformState = {
         position: targetObj.position.clone(),
         rotation: targetObj.rotation.clone(),

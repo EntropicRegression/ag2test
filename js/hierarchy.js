@@ -330,7 +330,8 @@ function isSceneHelper(obj) {
     obj.type === 'TransformControlsPlane' ||
     obj.type === 'TransformControlsGizmo' ||
     (obj.constructor && obj.constructor.name === 'TransformControls') ||
-    obj.name === 'LightHelper'
+    obj.name === 'LightHelper' ||
+    obj.name === '__EditModeHelpers__'
   ) {
     return true;
   }

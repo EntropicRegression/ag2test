@@ -12,7 +12,7 @@ let dragPosition = 'child'; // 'child', 'top', 'bottom'
 export function initHierarchy() {
   // Rebuild tree on scene structure changes
   state.addEventListener('hierarchy', rebuildTree);
-  
+
   // Rebuild on selection changes to highlight the selected node
   state.addEventListener('selection', highlightSelectedNode);
 
@@ -22,11 +22,11 @@ export function initHierarchy() {
 
 function rebuildTree() {
   treeRoot.innerHTML = '';
-  
+
   // Create Root "Scene" Node
   const sceneNode = createNodeElement(state.scene, 0);
   treeRoot.appendChild(sceneNode);
-  
+
   // Bind icons
   if (window.lucide) {
     window.lucide.createIcons();
@@ -36,10 +36,10 @@ function rebuildTree() {
 function createNodeElement(object, depth) {
   const li = document.createElement('li');
   li.className = 'tree-item';
-  
+
   const isScene = object.isScene;
   const uuid = object.uuid;
-  
+
   // Tree row div
   const row = document.createElement('div');
   row.className = 'tree-row';
@@ -47,7 +47,7 @@ function createNodeElement(object, depth) {
   if (state.selectedObject === object) {
     row.classList.add('selected');
   }
-  
+
   // 1. Indent
   row.style.paddingLeft = `${depth * 14 + 8}px`;
 
@@ -55,13 +55,13 @@ function createNodeElement(object, depth) {
   const hasChildren = object.children.length > 0 && !isSceneHelper(object);
   const toggle = document.createElement('span');
   toggle.className = 'tree-toggle';
-  
+
   if (hasChildren) {
     const isCollapsed = collapsedUuids.has(uuid);
-    toggle.innerHTML = isCollapsed 
-      ? '<i data-lucide="chevron-right"></i>' 
+    toggle.innerHTML = isCollapsed
+      ? '<i data-lucide="chevron-right"></i>'
       : '<i data-lucide="chevron-down"></i>';
-    
+
     toggle.addEventListener('click', (e) => {
       e.stopPropagation();
       if (collapsedUuids.has(uuid)) {
@@ -81,7 +81,7 @@ function createNodeElement(object, depth) {
   const icon = document.createElement('i');
   icon.className = 'tree-icon';
   let iconName = 'box';
-  
+
   if (isScene) iconName = 'globe';
   else if (object.isGroup) iconName = 'folder';
   else if (object.isLight) iconName = 'lightbulb';
@@ -110,10 +110,10 @@ function createNodeElement(object, depth) {
       input.type = 'text';
       input.className = 'tree-label-input';
       input.value = object.name;
-      
+
       row.replaceChild(input, label);
       input.focus();
-      
+
       function finishRename() {
         const newName = input.value.trim() || object.name;
         if (newName !== object.name) {
@@ -122,7 +122,7 @@ function createNodeElement(object, depth) {
         }
         rebuildTree();
       }
-      
+
       input.addEventListener('blur', finishRename);
       input.addEventListener('keydown', (ev) => {
         if (ev.key === 'Enter') finishRename();
@@ -136,10 +136,10 @@ function createNodeElement(object, depth) {
     const visBtn = document.createElement('button');
     visBtn.className = 'tree-action-btn';
     visBtn.title = object.visible ? '隱藏物件' : '顯示物件';
-    visBtn.innerHTML = object.visible 
-      ? '<i data-lucide="eye"></i>' 
+    visBtn.innerHTML = object.visible
+      ? '<i data-lucide="eye"></i>'
       : '<i data-lucide="eye-off"></i>';
-    
+
     visBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       const cmd = new ChangePropertyCommand(object, 'visible', object.visible, !object.visible);
@@ -155,7 +155,7 @@ function createNodeElement(object, depth) {
     delBtn.title = '刪除物件';
     delBtn.innerHTML = '<i data-lucide="trash"></i>';
     delBtn.style.color = '#ff3366';
-    
+
     delBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       const cmd = new RemoveObjectCommand(object);
@@ -201,9 +201,9 @@ function createNodeElement(object, depth) {
   row.addEventListener('dragover', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    
+
     if (!draggedUuid || draggedUuid === uuid) return;
-    
+
     // Safety check: Don't drag parent into its own descendants
     const draggedObj = state.scene.getObjectByProperty('uuid', draggedUuid);
     if (draggedObj && isDescendant(draggedObj, object)) {
@@ -214,7 +214,7 @@ function createNodeElement(object, depth) {
     const rect = row.getBoundingClientRect();
     const relY = e.clientY - rect.top;
     const height = rect.height;
-    
+
     row.classList.remove('drag-over-top', 'drag-over-bottom', 'drag-over-child');
 
     // Scene node only accepts child drop
@@ -233,7 +233,7 @@ function createNodeElement(object, depth) {
         dragPosition = 'child';
       }
     }
-    
+
     e.dataTransfer.dropEffect = 'move';
   });
 
@@ -267,7 +267,7 @@ function createNodeElement(object, depth) {
           if (dragPosition === 'bottom') {
             newIndex += 1;
           }
-          
+
           cmd = new ReparentCommand(draggedObj, parent);
           // Set custom order index property
           cmd.newIndex = newIndex;
@@ -278,7 +278,7 @@ function createNodeElement(object, depth) {
         state.history.execute(cmd);
       }
     }
-    
+
     draggedUuid = null;
   });
 
@@ -292,12 +292,12 @@ function createNodeElement(object, depth) {
     if (isCollapsed) {
       ul.classList.add('collapsed');
     }
-    
+
     children.forEach(child => {
       const childNode = createNodeElement(child, depth + 1);
       ul.appendChild(childNode);
     });
-    
+
     li.appendChild(ul);
   }
 
@@ -330,7 +330,8 @@ function isSceneHelper(obj) {
     obj.type === 'TransformControlsPlane' ||
     obj.type === 'TransformControlsGizmo' ||
     (obj.constructor && obj.constructor.name === 'TransformControls') ||
-    obj.name === 'LightHelper'
+    obj.name === 'LightHelper' ||
+    obj.name === '__EditModeHelpers__'
   ) {
     return true;
   }
@@ -351,11 +352,11 @@ function isSceneHelper(obj) {
 function highlightSelectedNode(selectedObj) {
   document.querySelectorAll('.tree-row').forEach(row => {
     row.classList.remove('selected');
-    
+
     const uuid = row.getAttribute('data-uuid');
     if (selectedObj && uuid === selectedObj.uuid) {
       row.classList.add('selected');
-      
+
       // Auto expand all parents of selected node if they are collapsed
       let p = selectedObj.parent;
       let changed = false;
@@ -371,7 +372,7 @@ function highlightSelectedNode(selectedObj) {
       }
     }
   });
-  
+
   // Sync status bar selection string
   const selectionStatus = document.getElementById('status-selection');
   if (selectedObj) {

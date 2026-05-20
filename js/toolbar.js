@@ -4,6 +4,9 @@ import { state } from './state.js';
 import { createGeometry, createLight, createEmptyGroup, deleteSelectedObject, focusCameraOnObject } from './objects.js';
 import { ChangeColorCommand, BatchColorCommand } from './history.js';
 import { triggerImport } from './io.js';
+import { toggleEditMode, getGizmoManager } from './editMode.js';
+import { deleteSelectedElements, createFaceFromSelection } from './editTools.js';
+import { selectAll, deselectAll } from './editSelection.js';
 
 export function initToolbar() {
   // Elements
@@ -257,7 +260,60 @@ export function initToolbar() {
       return;
     }
 
-    // Single keys
+    // --- Tab: Toggle Edit Mode ---
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      toggleEditMode();
+      return;
+    }
+
+    // --- Edit Mode specific shortcuts ---
+    if (state.editorMode === 'edit') {
+      switch (e.key.toLowerCase()) {
+        case '1':
+          setEditSubMode('vertex');
+          return;
+        case '2':
+          setEditSubMode('edge');
+          return;
+        case '3':
+          setEditSubMode('face');
+          return;
+        case 'x':
+        case 'delete':
+        case 'backspace':
+          deleteSelectedElements();
+          return;
+        case 'f':
+          createFaceFromSelection();
+          return;
+        case 'a':
+          // Toggle select all
+          const hasSelection = state.selectedVertices.size > 0 || state.selectedEdges.size > 0 || state.selectedFaces.size > 0;
+          if (hasSelection) {
+            deselectAll();
+          } else {
+            selectAll();
+          }
+          return;
+        case 'escape':
+          // Exit edit mode
+          toggleEditMode();
+          return;
+        case 't':
+          setTransformMode('translate');
+          return;
+        case 'r':
+          setTransformMode('rotate');
+          return;
+        case 's':
+          setTransformMode('scale');
+          return;
+      }
+      return; // Don't fall through to Object Mode shortcuts
+    }
+
+    // --- Object Mode shortcuts ---
     switch(e.key.toLowerCase()) {
       case 't':
         setTransformMode('translate');
@@ -290,6 +346,96 @@ export function initToolbar() {
       case '4': applyColor('#ff6600'); break;
       case '5': applyColor('#ff0066'); break;
       case '6': applyColor('#e0e0ff'); break;
+    }
+  });
+
+  // --- EDIT MODE UI WIRING ---
+  const btnEditToggle = document.getElementById('btn-edit-toggle');
+  const editSubModes = document.getElementById('edit-sub-modes');
+  const editToolsGroup = document.getElementById('edit-tools-group');
+  const btnSubVertex = document.getElementById('btn-sub-vertex');
+  const btnSubEdge = document.getElementById('btn-sub-edge');
+  const btnSubFace = document.getElementById('btn-sub-face');
+  const btnEditDelete = document.getElementById('btn-edit-delete');
+  const btnEditFill = document.getElementById('btn-edit-fill');
+  const viewportContainer = document.getElementById('canvas-container');
+  const statusEditorMode = document.getElementById('status-editor-mode');
+  const statusEditInfo = document.getElementById('status-edit-info');
+
+  // Edit mode toggle button
+  btnEditToggle.addEventListener('click', () => {
+    toggleEditMode();
+  });
+
+  // Sub-mode buttons
+  function setEditSubMode(mode) {
+    state.setEditSubMode(mode);
+    btnSubVertex.classList.toggle('active', mode === 'vertex');
+    btnSubEdge.classList.toggle('active', mode === 'edge');
+    btnSubFace.classList.toggle('active', mode === 'face');
+
+    // Update gizmo visibility
+    const gm = getGizmoManager();
+    if (gm) gm.updateSubModeVisibility();
+  }
+
+  btnSubVertex.addEventListener('click', () => setEditSubMode('vertex'));
+  btnSubEdge.addEventListener('click', () => setEditSubMode('edge'));
+  btnSubFace.addEventListener('click', () => setEditSubMode('face'));
+
+  // Edit tools
+  btnEditDelete.addEventListener('click', () => deleteSelectedElements());
+  btnEditFill.addEventListener('click', () => createFaceFromSelection());
+
+  // React to mode changes
+  state.addEventListener('modeChange', (data) => {
+    const isEdit = data.mode === 'edit';
+
+    // Toggle button active state
+    btnEditToggle.classList.toggle('active', isEdit);
+
+    // Show/hide sub-mode and tools UI
+    if (isEdit) {
+      editSubModes.classList.remove('hidden');
+      editToolsGroup.classList.remove('hidden');
+      viewportContainer.classList.add('edit-mode');
+    } else {
+      editSubModes.classList.add('hidden');
+      editToolsGroup.classList.add('hidden');
+      viewportContainer.classList.remove('edit-mode');
+    }
+
+    // Update status bar
+    if (isEdit) {
+      statusEditorMode.innerHTML = '<i data-lucide="pen-tool" class="inline-icon"></i> 編輯模式';
+      statusEditorMode.classList.add('edit-active');
+    } else {
+      statusEditorMode.innerHTML = '<i data-lucide="box" class="inline-icon"></i> 物件模式';
+      statusEditorMode.classList.remove('edit-active');
+    }
+
+    if (window.lucide) window.lucide.createIcons();
+  });
+
+  // React to edit selection changes — update status bar info
+  state.addEventListener('editSelection', (data) => {
+    if (!statusEditInfo) return;
+    const mode = state.editSubMode;
+    let info = '';
+
+    if (mode === 'vertex') {
+      info = `頂點選取: ${state.selectedVertices.size}`;
+    } else if (mode === 'edge') {
+      info = `邊選取: ${state.selectedEdges.size}`;
+    } else if (mode === 'face') {
+      info = `面選取: ${state.selectedFaces.size}`;
+    }
+
+    if (state.editorMode === 'edit') {
+      statusEditInfo.textContent = ` | ${info}`;
+      statusEditInfo.classList.remove('hidden');
+    } else {
+      statusEditInfo.classList.add('hidden');
     }
   });
 }

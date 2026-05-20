@@ -35,8 +35,60 @@ export function initProperties() {
   state.addEventListener('selection', updatePanel);
   state.addEventListener('properties', updatePanel);
 
+  // Listen for Edit Mode selection changes
+  state.addEventListener('editSelection', updateEditModePanel);
+  state.addEventListener('modeChange', (data) => {
+    if (data.mode === 'object') {
+      // Returning to Object Mode — restore normal panel
+      updatePanel(state.selectedObject);
+    }
+  });
+
   // Setup inputs events
   setupInputListeners();
+}
+
+function updateEditModePanel() {
+  if (state.editorMode !== 'edit') return;
+
+  // Import getEditData dynamically to avoid circular deps
+  import('./editMode.js').then(({ getEditData }) => {
+    const editData = getEditData();
+    if (!editData) return;
+
+    noSelectionMsg.classList.add('hidden');
+    propsPanel.classList.remove('hidden');
+
+    const mode = state.editSubMode;
+
+    if (mode === 'vertex' && state.selectedVertices.size > 0) {
+      // Show first selected vertex position
+      const firstIdx = state.selectedVertices.values().next().value;
+      const pos = editData.getVertexLocalPos(firstIdx);
+
+      propName.value = `頂點 #${firstIdx} (共選取 ${state.selectedVertices.size} 個)`;
+      propPosX.value = parseFloat(pos.x.toFixed(3));
+      propPosY.value = parseFloat(pos.y.toFixed(3));
+      propPosZ.value = parseFloat(pos.z.toFixed(3));
+    } else if (mode === 'edge' && state.selectedEdges.size > 0) {
+      const firstKey = state.selectedEdges.values().next().value;
+      const [v1Str, v2Str] = firstKey.split('-');
+      const v1 = parseInt(v1Str), v2 = parseInt(v2Str);
+      const p1 = editData.getVertexLocalPos(v1);
+      const p2 = editData.getVertexLocalPos(v2);
+      const length = p1.distanceTo(p2);
+
+      propName.value = `邊 ${firstKey} (共選取 ${state.selectedEdges.size} 條)`;
+      propPosX.value = parseFloat(((p1.x + p2.x) / 2).toFixed(3));
+      propPosY.value = parseFloat(((p1.y + p2.y) / 2).toFixed(3));
+      propPosZ.value = parseFloat(((p1.z + p2.z) / 2).toFixed(3));
+    } else if (mode === 'face' && state.selectedFaces.size > 0) {
+      const firstFaceIdx = state.selectedFaces.values().next().value;
+      propName.value = `面 #${firstFaceIdx} (共選取 ${state.selectedFaces.size} 個)`;
+    } else {
+      propName.value = `編輯模式 — ${mode === 'vertex' ? '頂點' : mode === 'edge' ? '邊' : '面'}`;
+    }
+  });
 }
 
 function updatePanel(targetObj) {

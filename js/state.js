@@ -20,6 +20,14 @@ class EditorState {
     this.isBloomEnabled = true;
     this.bloomStrength = 1.6;
     
+    // Edit Mode state
+    this.editorMode = 'object';          // 'object' | 'edit'
+    this.editSubMode = 'vertex';         // 'vertex' | 'edge' | 'face'
+    this.editTargetMesh = null;          // Mesh currently in edit mode
+    this.selectedVertices = new Set();   // Selected vertex indices
+    this.selectedEdges = new Set();      // Selected edge keys ("v1-v2")
+    this.selectedFaces = new Set();      // Selected face indices
+    
     // Command history reference
     this.history = null;
     
@@ -29,7 +37,9 @@ class EditorState {
       hierarchy: [],
       properties: [],
       color: [],
-      history: []
+      history: [],
+      modeChange: [],
+      editSelection: []
     };
   }
 
@@ -84,6 +94,65 @@ class EditorState {
   // Triggered when Undo/Redo happens to update state bar/buttons
   notifyHistoryChanged() {
     this.triggerEvent('history');
+  }
+
+  // Enter Edit Mode for a mesh
+  enterEditMode(mesh) {
+    if (!mesh || !mesh.isMesh) return false;
+    this.editorMode = 'edit';
+    this.editTargetMesh = mesh;
+    this.selectedVertices.clear();
+    this.selectedEdges.clear();
+    this.selectedFaces.clear();
+    this.editSubMode = 'vertex';
+    
+    // Detach transform controls from object
+    if (this.transformControls) {
+      this.transformControls.detach();
+    }
+    
+    this.triggerEvent('modeChange', { mode: 'edit', mesh });
+    return true;
+  }
+
+  // Exit Edit Mode
+  exitEditMode() {
+    const wasInEdit = this.editorMode === 'edit';
+    this.editorMode = 'object';
+    this.editTargetMesh = null;
+    this.selectedVertices.clear();
+    this.selectedEdges.clear();
+    this.selectedFaces.clear();
+    
+    // Re-attach transform controls if object is selected
+    if (this.selectedObject && this.transformControls) {
+      this.transformControls.attach(this.selectedObject);
+    }
+    
+    if (wasInEdit) {
+      this.triggerEvent('modeChange', { mode: 'object', mesh: null });
+    }
+  }
+
+  // Switch sub-mode in Edit Mode
+  setEditSubMode(mode) {
+    if (this.editorMode !== 'edit') return;
+    if (!['vertex', 'edge', 'face'].includes(mode)) return;
+    this.editSubMode = mode;
+    this.selectedVertices.clear();
+    this.selectedEdges.clear();
+    this.selectedFaces.clear();
+    this.triggerEvent('editSelection', { subMode: mode });
+  }
+
+  // Notify sub-element selection changes
+  notifyEditSelectionChanged() {
+    this.triggerEvent('editSelection', {
+      subMode: this.editSubMode,
+      vertices: this.selectedVertices,
+      edges: this.selectedEdges,
+      faces: this.selectedFaces
+    });
   }
 }
 
