@@ -10,6 +10,7 @@ import { initProperties } from './properties.js';
 import { initBloom } from './bloom.js';
 import { initEditMode } from './editMode.js';
 import { interpolateCamera, updateCameraHelper } from './camera.js';
+import { interpolateObject } from './animation.js';
 
 // Setup elements
 const container = document.getElementById('canvas-container');
@@ -108,10 +109,12 @@ function init() {
   });
 
   state.addEventListener('timelineChange', (data) => {
-    // Interpolate all cameras immediately when time updates ( scrub / play / undo )
+    // Interpolate all cameras and animated objects immediately when time updates ( scrub / play / undo )
     if (data.time !== undefined) {
       scene.traverse(child => {
-        if (child.isSceneCamera) {
+        if (child.userData && child.userData.animationTracks && Object.keys(child.userData.animationTracks).length > 0) {
+          interpolateObject(child, data.time);
+        } else if (child.isSceneCamera) {
           interpolateCamera(child, data.time);
         }
       });

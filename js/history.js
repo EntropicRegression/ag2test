@@ -371,6 +371,29 @@ export class AddFaceCommand extends Command {
   }
 }
 
+// 9. Update Animation Tracks Command
+export class UpdateAnimationTracksCommand extends Command {
+  constructor(object, oldTracks, newTracks) {
+    super();
+    this.name = `修改動畫軌道: ${object.name}`;
+    this.object = object;
+    this.oldTracks = JSON.parse(JSON.stringify(oldTracks || {}));
+    this.newTracks = JSON.parse(JSON.stringify(newTracks || {}));
+  }
+
+  execute() {
+    this.object.userData.animationTracks = JSON.parse(JSON.stringify(this.newTracks));
+    state.triggerEvent('cameraChange', this.object);
+    state.setAnimationTime(state.timeline.currentTime, false);
+  }
+
+  undo() {
+    this.object.userData.animationTracks = JSON.parse(JSON.stringify(this.oldTracks));
+    state.triggerEvent('cameraChange', this.object);
+    state.setAnimationTime(state.timeline.currentTime, false);
+  }
+}
+
 // History stack controller
 export class HistoryManager {
   constructor(maxSteps = 100) {

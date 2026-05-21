@@ -1,7 +1,7 @@
 // properties.js - Double-Binding Property Panel
 import * as THREE from 'three';
 import { state } from './state.js';
-import { ChangePropertyCommand, ChangeColorCommand } from './history.js';
+import { ChangePropertyCommand, ChangeColorCommand, UpdateAnimationTracksCommand } from './history.js';
 import { addCameraKeyframe, clearCameraKeyframes } from './camera.js';
 
 // DOM elements
@@ -537,18 +537,84 @@ function setupInputListeners() {
 
   btnCameraKeyframeAdd.addEventListener('click', () => {
     const obj = state.selectedObject;
-    if (!obj || !obj.isSceneCamera) return;
+    if (!obj) return;
     
-    // Add keyframe at current timeline time
-    addCameraKeyframe(obj, state.timeline.currentTime);
+    const time = state.timeline.currentTime;
+    const oldTracks = obj.userData.animationTracks || {};
+    const newTracks = JSON.parse(JSON.stringify(oldTracks));
+
+    function insertIntoTracks(tracks, trackName, t, val) {
+      if (!tracks[trackName]) {
+        tracks[trackName] = [];
+      }
+      const track = tracks[trackName];
+      const existingIdx = track.findIndex(kf => Math.abs(kf.time - t) < 0.01);
+      if (existingIdx !== -1) {
+        track[existingIdx].value = val;
+      } else {
+        track.push({
+          time: t,
+          value: val,
+          leftHandle: { timeOffset: -0.2, valueOffset: 0.0 },
+          rightHandle: { timeOffset: 0.2, valueOffset: 0.0 }
+        });
+        track.sort((a, b) => a.time - b.time);
+      }
+    }
+
+    // 1. Position X, Y, Z
+    insertIntoTracks(newTracks, 'position.x', time, obj.position.x);
+    insertIntoTracks(newTracks, 'position.y', time, obj.position.y);
+    insertIntoTracks(newTracks, 'position.z', time, obj.position.z);
+
+    // 2. Rotation X, Y, Z (convert to degrees)
+    insertIntoTracks(newTracks, 'rotation.x', time, obj.rotation.x * (180 / Math.PI));
+    insertIntoTracks(newTracks, 'rotation.y', time, obj.rotation.y * (180 / Math.PI));
+    insertIntoTracks(newTracks, 'rotation.z', time, obj.rotation.z * (180 / Math.PI));
+
+    // 3. Scale X, Y, Z (if not camera/light)
+    if (!obj.isSceneCamera && !obj.isLight) {
+      insertIntoTracks(newTracks, 'scale.x', time, obj.scale.x);
+      insertIntoTracks(newTracks, 'scale.y', time, obj.scale.y);
+      insertIntoTracks(newTracks, 'scale.z', time, obj.scale.z);
+    }
+
+    // 4. FOV (if camera)
+    if (obj.isSceneCamera) {
+      insertIntoTracks(newTracks, 'fov', time, obj.fov);
+    }
+
+    // 5. Intensity (if light)
+    if (obj.isLight) {
+      insertIntoTracks(newTracks, 'intensity', time, obj.intensity);
+    }
+
+    // 6. Material Wireframe Color (R, G, B channels in [0, 1])
+    let colorRGB = null;
+    obj.traverse(child => {
+      if (child.isMesh && child.material && child.material.color) {
+        colorRGB = child.material.color;
+      }
+    });
+    if (colorRGB) {
+      insertIntoTracks(newTracks, 'color.r', time, colorRGB.r);
+      insertIntoTracks(newTracks, 'color.g', time, colorRGB.g);
+      insertIntoTracks(newTracks, 'color.b', time, colorRGB.b);
+    }
+
+    const cmd = new UpdateAnimationTracksCommand(obj, oldTracks, newTracks);
+    state.history.execute(cmd);
   });
 
   btnCameraKeyframesClear.addEventListener('click', () => {
     const obj = state.selectedObject;
-    if (!obj || !obj.isSceneCamera) return;
+    if (!obj) return;
     
-    if (confirm("確定要清除此攝影機的所有動畫關鍵影格嗎？")) {
-      clearCameraKeyframes(obj);
+    if (confirm(`確定要清除物件 "${obj.name}" 的所有動畫關鍵影格嗎？`)) {
+      const oldTracks = obj.userData.animationTracks || {};
+      const newTracks = {};
+      const cmd = new UpdateAnimationTracksCommand(obj, oldTracks, newTracks);
+      state.history.execute(cmd);
     }
   });
 }
