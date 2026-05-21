@@ -272,12 +272,14 @@ export class VertexMoveCommand extends Command {
     for (let i = 0; i < this.vertexIndices.length; i++) {
       const idx = this.vertexIndices[i];
       const pos = positions[i];
-      posAttr.setXYZ(idx, pos.x, pos.y, pos.z);
-      if (this.editData && this.editData.positions[idx]) {
-        this.editData.positions[idx] = { x: pos.x, y: pos.y, z: pos.z };
+      if (this.editData) {
+        this.editData.updateVertexPosition(idx, pos);
+      } else {
+        posAttr.setXYZ(idx, pos.x, pos.y, pos.z);
+        posAttr.needsUpdate = true;
       }
     }
-    posAttr.needsUpdate = true;
+    this.mesh.geometry.computeVertexNormals();
     this.mesh.geometry.computeBoundingSphere();
     this.mesh.geometry.computeBoundingBox();
 

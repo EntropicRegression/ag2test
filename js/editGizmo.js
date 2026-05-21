@@ -142,6 +142,7 @@ export class EditGizmoManager {
 
     this.vertexPoints = new THREE.Points(geometry, material);
     this.vertexPoints.renderOrder = 1000;
+    this.vertexPoints.frustumCulled = false;
     this.helperGroup.add(this.vertexPoints);
   }
 
@@ -186,18 +187,62 @@ export class EditGizmoManager {
 
     this.edgeLines = new THREE.LineSegments(geometry, material);
     this.edgeLines.renderOrder = 999;
+    this.edgeLines.frustumCulled = false;
     this.helperGroup.add(this.edgeLines);
   }
 
   _buildFaceOverlay() {
-    // Clone mesh geometry and convert to non-indexed for independent face highlighting
     const mesh = this.editData.mesh;
-    const geomClone = mesh.geometry.toNonIndexed();
+    const faces = this.editData.faces;
+    const count = faces.length;
 
-    // Create per-face vertex color (for highlight)
-    const vertCount = geomClone.attributes.position.count;
+    // Each quad has 6 vertices (2 triangles)
+    const vertCount = count * 6;
+    const posArray = new Float32Array(vertCount * 3);
     const colorArray = new Float32Array(vertCount * 3);
-    geomClone.setAttribute('color', new THREE.BufferAttribute(colorArray, 3));
+
+    for (let i = 0; i < count; i++) {
+      const face = faces[i];
+      const pA = this.editData.getVertexLocalPos(face.a);
+      const pB = this.editData.getVertexLocalPos(face.b);
+      const pC = this.editData.getVertexLocalPos(face.c);
+      const pD = this.editData.getVertexLocalPos(face.d);
+
+      // Triangle 1: a, b, c
+      posArray[i * 18 + 0] = pA.x;
+      posArray[i * 18 + 1] = pA.y;
+      posArray[i * 18 + 2] = pA.z;
+
+      posArray[i * 18 + 3] = pB.x;
+      posArray[i * 18 + 4] = pB.y;
+      posArray[i * 18 + 5] = pB.z;
+
+      posArray[i * 18 + 6] = pC.x;
+      posArray[i * 18 + 7] = pC.y;
+      posArray[i * 18 + 8] = pC.z;
+
+      // Triangle 2: a, c, d
+      posArray[i * 18 + 9] = pA.x;
+      posArray[i * 18 + 10] = pA.y;
+      posArray[i * 18 + 11] = pA.z;
+
+      posArray[i * 18 + 12] = pC.x;
+      posArray[i * 18 + 13] = pC.y;
+      posArray[i * 18 + 14] = pC.z;
+
+      posArray[i * 18 + 15] = pD.x;
+      posArray[i * 18 + 16] = pD.y;
+      posArray[i * 18 + 17] = pD.z;
+
+      // Initial color: black (no highlight)
+      for (let c = 0; c < 18; c++) {
+        colorArray[i * 18 + c] = 0;
+      }
+    }
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+    geometry.setAttribute('color', new THREE.BufferAttribute(colorArray, 3));
 
     const material = new THREE.MeshBasicMaterial({
       vertexColors: true,
@@ -207,8 +252,9 @@ export class EditGizmoManager {
       depthTest: false
     });
 
-    this.faceOverlayMesh = new THREE.Mesh(geomClone, material);
+    this.faceOverlayMesh = new THREE.Mesh(geometry, material);
     this.faceOverlayMesh.renderOrder = 998;
+    this.faceOverlayMesh.frustumCulled = false;
 
     // Copy world transform from target mesh
     this.faceOverlayMesh.matrixAutoUpdate = false;
@@ -250,7 +296,7 @@ export class EditGizmoManager {
       this.vertexPoints.visible = (mode === 'vertex' || mode === 'edge');
     }
     if (this.edgeLines) {
-      this.edgeLines.visible = (mode === 'edge');
+      this.edgeLines.visible = true;
     }
     if (this.selectedEdgeGroup) {
       this.selectedEdgeGroup.visible = (mode === 'edge');
@@ -391,16 +437,14 @@ export class EditGizmoManager {
       colorAttr.setXYZ(i, 0, 0, 0);
     }
 
-    // Highlight selected faces
+    // Highlight selected faces (each quad occupies 6 vertices)
     for (const faceIdx of selectedSet) {
-      const vertA = faceIdx * 3;
-      const vertB = faceIdx * 3 + 1;
-      const vertC = faceIdx * 3 + 2;
-
-      if (vertC < vertCount) {
-        colorAttr.setXYZ(vertA, FACE_COLOR_SELECTED.r, FACE_COLOR_SELECTED.g, FACE_COLOR_SELECTED.b);
-        colorAttr.setXYZ(vertB, FACE_COLOR_SELECTED.r, FACE_COLOR_SELECTED.g, FACE_COLOR_SELECTED.b);
-        colorAttr.setXYZ(vertC, FACE_COLOR_SELECTED.r, FACE_COLOR_SELECTED.g, FACE_COLOR_SELECTED.b);
+      const startVert = faceIdx * 6;
+      for (let v = 0; v < 6; v++) {
+        const vert = startVert + v;
+        if (vert < vertCount) {
+          colorAttr.setXYZ(vert, FACE_COLOR_SELECTED.r, FACE_COLOR_SELECTED.g, FACE_COLOR_SELECTED.b);
+        }
       }
     }
 
@@ -420,6 +464,8 @@ export class EditGizmoManager {
         posAttr.setXYZ(i, wp.x, wp.y, wp.z);
       }
       posAttr.needsUpdate = true;
+      this.vertexPoints.geometry.computeBoundingBox();
+      this.vertexPoints.geometry.computeBoundingSphere();
     }
 
     // Refresh edge lines
@@ -433,6 +479,8 @@ export class EditGizmoManager {
         posAttr.setXYZ(i * 2 + 1, p2.x, p2.y, p2.z);
       }
       posAttr.needsUpdate = true;
+      this.edgeLines.geometry.computeBoundingBox();
+      this.edgeLines.geometry.computeBoundingSphere();
     }
 
     // Refresh vertex pick spheres
@@ -441,12 +489,12 @@ export class EditGizmoManager {
       this.vertexPickSpheres[i].position.copy(wp);
     }
 
-    // Refresh face overlay matrix
+    // Refresh face overlay matrix and positions
     if (this.faceOverlayMesh) {
       this.faceOverlayMesh.matrix.copy(this.editData.mesh.matrixWorld);
       this.faceOverlayMesh.matrixWorld.copy(this.editData.mesh.matrixWorld);
 
-      // Also update the geometry positions from source
+      // Also update the geometry positions from source (each quad is 6 vertices)
       const dstPosAttr = this.faceOverlayMesh.geometry.attributes.position;
       const faces = this.editData.faces;
       for (let i = 0; i < faces.length; i++) {
@@ -454,12 +502,18 @@ export class EditGizmoManager {
         const pA = this.editData.getVertexLocalPos(face.a);
         const pB = this.editData.getVertexLocalPos(face.b);
         const pC = this.editData.getVertexLocalPos(face.c);
+        const pD = this.editData.getVertexLocalPos(face.d);
 
-        dstPosAttr.setXYZ(i * 3, pA.x, pA.y, pA.z);
-        dstPosAttr.setXYZ(i * 3 + 1, pB.x, pB.y, pB.z);
-        dstPosAttr.setXYZ(i * 3 + 2, pC.x, pC.y, pC.z);
+        dstPosAttr.setXYZ(i * 6 + 0, pA.x, pA.y, pA.z);
+        dstPosAttr.setXYZ(i * 6 + 1, pB.x, pB.y, pB.z);
+        dstPosAttr.setXYZ(i * 6 + 2, pC.x, pC.y, pC.z);
+        dstPosAttr.setXYZ(i * 6 + 3, pA.x, pA.y, pA.z);
+        dstPosAttr.setXYZ(i * 6 + 4, pC.x, pC.y, pC.z);
+        dstPosAttr.setXYZ(i * 6 + 5, pD.x, pD.y, pD.z);
       }
       dstPosAttr.needsUpdate = true;
+      this.faceOverlayMesh.geometry.computeBoundingBox();
+      this.faceOverlayMesh.geometry.computeBoundingSphere();
     }
 
     // 當處於邊線子模式時，動態更新選中邊線的圓柱網格位置與長度

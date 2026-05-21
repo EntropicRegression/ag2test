@@ -130,6 +130,9 @@ function getSelectedVertices(editData) {
         uniqueVerts.add(face.a);
         uniqueVerts.add(face.b);
         uniqueVerts.add(face.c);
+        if (face.d !== undefined && face.d !== null && face.d !== face.c) {
+          uniqueVerts.add(face.d);
+        }
       }
     }
   }
@@ -182,9 +185,16 @@ function updateEditModePanel() {
         const p1 = editData.getVertexLocalPos(face.a);
         const p2 = editData.getVertexLocalPos(face.b);
         const p3 = editData.getVertexLocalPos(face.c);
-        propPosX.value = parseFloat(((p1.x + p2.x + p3.x) / 3).toFixed(3));
-        propPosY.value = parseFloat(((p1.y + p2.y + p3.y) / 3).toFixed(3));
-        propPosZ.value = parseFloat(((p1.z + p2.z + p3.z) / 3).toFixed(3));
+        if (face.d !== undefined && face.d !== null && face.d !== face.c) {
+          const p4 = editData.getVertexLocalPos(face.d);
+          propPosX.value = parseFloat(((p1.x + p2.x + p3.x + p4.x) / 4).toFixed(3));
+          propPosY.value = parseFloat(((p1.y + p2.y + p3.y + p4.y) / 4).toFixed(3));
+          propPosZ.value = parseFloat(((p1.z + p2.z + p3.z + p4.z) / 4).toFixed(3));
+        } else {
+          propPosX.value = parseFloat(((p1.x + p2.x + p3.x) / 3).toFixed(3));
+          propPosY.value = parseFloat(((p1.y + p2.y + p3.y) / 3).toFixed(3));
+          propPosZ.value = parseFloat(((p1.z + p2.z + p3.z) / 3).toFixed(3));
+        }
       }
       enablePositionFields(true);
     } else {

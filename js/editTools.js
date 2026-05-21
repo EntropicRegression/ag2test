@@ -52,6 +52,9 @@ function getSelectedVertices() {
         uniqueVerts.add(face.a);
         uniqueVerts.add(face.b);
         uniqueVerts.add(face.c);
+        if (face.d !== undefined && face.d !== null && face.d !== face.c) {
+          uniqueVerts.add(face.d);
+        }
       }
     }
   }
@@ -358,10 +361,17 @@ export function deleteSelectedElements() {
     let newIndices = [];
 
     if (state.editSubMode === 'face' && state.selectedFaces.size > 0) {
-      // 刪除選取的面
+      // 刪除選取的面 (過濾出選中 Quad 對應的所有底層三角形)
+      const deletedTriangleIndices = new Set();
+      for (const quadIdx of state.selectedFaces) {
+        const quad = editData.faces[quadIdx];
+        if (quad && quad.triIndices) {
+          quad.triIndices.forEach(tIdx => deletedTriangleIndices.add(tIdx));
+        }
+      }
       for (let i = 0; i < oldIndices.length; i += 3) {
-        const faceIdx = i / 3;
-        if (!state.selectedFaces.has(faceIdx)) {
+        const triIdx = i / 3;
+        if (!deletedTriangleIndices.has(triIdx)) {
           newIndices.push(oldIndices[i], oldIndices[i + 1], oldIndices[i + 2]);
         }
       }
@@ -476,8 +486,11 @@ export function deleteSelectedElements() {
     const deletedFaces = new Set();
 
     if (state.editSubMode === 'face' && state.selectedFaces.size > 0) {
-      for (const faceIdx of state.selectedFaces) {
-        deletedFaces.add(faceIdx);
+      for (const quadIdx of state.selectedFaces) {
+        const quad = editData.faces[quadIdx];
+        if (quad && quad.triIndices) {
+          quad.triIndices.forEach(tIdx => deletedFaces.add(tIdx));
+        }
       }
     } else if (state.editSubMode === 'vertex' && state.selectedVertices.size > 0) {
       for (const vertIdx of state.selectedVertices) {

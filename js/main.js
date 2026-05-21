@@ -10,7 +10,7 @@ import { initProperties } from './properties.js';
 import { initBloom } from './bloom.js';
 import { initEditMode } from './editMode.js';
 import { interpolateCamera, updateCameraHelper } from './camera.js';
-import { interpolateObject } from './animation.js';
+import { interpolateObject, evaluateTrack } from './animation.js';
 
 // Setup elements
 const container = document.getElementById('canvas-container');
@@ -87,25 +87,51 @@ function init() {
 
   // State event listeners for Camera and Timeline synchronization
   state.addEventListener('cameraChange', (activeCam) => {
-    const renderingCam = activeCam || state.camera;
+    let renderingCam = state.activeViewportCamera || state.camera;
     
-    // Sync aspect ratio and helper when switching viewports
-    if (activeCam && activeCam !== state.camera) {
-      const width = container.clientWidth;
-      const height = container.clientHeight;
-      activeCam.aspect = width / height;
-      activeCam.updateProjectionMatrix();
-      
-      const parentGroup = activeCam.parent;
-      if (parentGroup && parentGroup.isSceneCamera) {
-        updateCameraHelper(parentGroup);
+    let targetCamera = null;
+    let cameraGroup = null;
+    
+    if (activeCam) {
+      if (activeCam.isCamera) {
+        targetCamera = activeCam;
+        if (activeCam.parent && activeCam.parent.isSceneCamera) {
+          cameraGroup = activeCam.parent;
+        }
+      } else if (activeCam.isSceneCamera) {
+        cameraGroup = activeCam;
+        targetCamera = activeCam.getObjectByName("CameraInstance");
       }
     }
     
+    if (targetCamera) {
+      renderingCam = targetCamera;
+      
+      // Update aspect ratio & projection matrix safely
+      if (targetCamera !== state.camera) {
+        const width = container.clientWidth;
+        const height = container.clientHeight;
+        targetCamera.aspect = width / height;
+        targetCamera.updateProjectionMatrix();
+      }
+    }
+    
+    if (cameraGroup) {
+      updateCameraHelper(cameraGroup);
+    }
+    
     // Sync TransformControls camera reference so gizmo drags correctly through new perspective
-    if (state.transformControls) {
+    if (state.transformControls && renderingCam && renderingCam.isCamera) {
       state.transformControls.camera = renderingCam;
     }
+
+    // Recalculate and update the 3D motion path spline in the editor screen
+    updateMotionPathHelper();
+  });
+
+  state.addEventListener('selection', () => {
+    // Rebuild the 3D motion path when the selected object changes
+    updateMotionPathHelper();
   });
 
   state.addEventListener('timelineChange', (data) => {
@@ -118,6 +144,9 @@ function init() {
           interpolateCamera(child, data.time);
         }
       });
+
+      // Update the 3D motion path playhead ball position matching current time
+      updatePlayheadBall();
     }
   });
 
@@ -232,3 +261,138 @@ function animate() {
 
 // Start application
 window.addEventListener('DOMContentLoaded', init);
+
+// Animation 3D Motion Path helper visualizer
+let motionPathGroup = null;
+
+function updateMotionPathHelper() {
+  // If the scene or state is not initialized yet, abort
+  if (!state.scene) return;
+
+  // If the group doesn't exist, create it and add to scene
+  if (!motionPathGroup) {
+    motionPathGroup = new THREE.Group();
+    motionPathGroup.name = "__AnimationPathHelper__";
+    motionPathGroup.userData.isEditPickHelper = true; // Excludes it from selection raycasting in selection.js
+    state.scene.add(motionPathGroup);
+  }
+
+  // Clear existing children
+  while (motionPathGroup.children.length > 0) {
+    const child = motionPathGroup.children[0];
+    motionPathGroup.remove(child);
+    if (child.geometry) child.geometry.dispose();
+    if (child.material) {
+      if (Array.isArray(child.material)) {
+        child.material.forEach(m => m.dispose());
+      } else {
+        child.material.dispose();
+      }
+    }
+  }
+
+  const obj = state.selectedObject;
+  if (!obj || !obj.userData || !obj.userData.animationTracks) {
+    return;
+  }
+
+  const tracks = obj.userData.animationTracks;
+  // Check if there's any position animation tracks
+  if (!tracks['position.x'] && !tracks['position.y'] && !tracks['position.z']) {
+    return;
+  }
+
+  // Get active position tracks
+  const trackX = tracks['position.x'] || [];
+  const trackY = tracks['position.y'] || [];
+  const trackZ = tracks['position.z'] || [];
+
+  // Gather all unique keyframe times across position tracks
+  const timesSet = new Set();
+  trackX.forEach(kf => timesSet.add(kf.time));
+  trackY.forEach(kf => timesSet.add(kf.time));
+  trackZ.forEach(kf => timesSet.add(kf.time));
+  const kfTimes = Array.from(timesSet).sort((a, b) => a - b);
+
+  if (kfTimes.length === 0) return;
+
+  // Sample the spline path from time 0 to state.timeline.duration
+  const duration = state.timeline.duration || 10.0;
+  const samples = 150;
+  const points = [];
+
+  for (let i = 0; i <= samples; i++) {
+    const t = (i / samples) * duration;
+    
+    // Evaluate x, y, z at time t
+    const x = tracks['position.x'] ? evaluateTrack(tracks['position.x'], t) : obj.position.x;
+    const y = tracks['position.y'] ? evaluateTrack(tracks['position.y'], t) : obj.position.y;
+    const z = tracks['position.z'] ? evaluateTrack(tracks['position.z'], t) : obj.position.z;
+    
+    points.push(new THREE.Vector3(x, y, z));
+  }
+
+  // 1. Draw glowing neon path line (neon purple)
+  const lineGeo = new THREE.BufferGeometry().setFromPoints(points);
+  const lineMat = new THREE.LineBasicMaterial({
+    color: 0xbf00ff,
+    transparent: true,
+    opacity: 0.85
+  });
+  const pathLine = new THREE.Line(lineGeo, lineMat);
+  pathLine.name = "PathLine";
+  motionPathGroup.add(pathLine);
+
+  // 2. Draw keyframe markers (neon cyan diamonds)
+  const markerGeo = new THREE.OctahedronGeometry(0.12, 0);
+  const markerMat = new THREE.MeshBasicMaterial({
+    color: 0x00ffff,
+    wireframe: true
+  });
+
+  kfTimes.forEach(t => {
+    const x = tracks['position.x'] ? evaluateTrack(tracks['position.x'], t) : obj.position.x;
+    const y = tracks['position.y'] ? evaluateTrack(tracks['position.y'], t) : obj.position.y;
+    const z = tracks['position.z'] ? evaluateTrack(tracks['position.z'], t) : obj.position.z;
+
+    const marker = new THREE.Mesh(markerGeo, markerMat);
+    marker.position.set(x, y, z);
+    marker.name = `KeyframeMarker-${t}`;
+    motionPathGroup.add(marker);
+  });
+
+  // 3. Draw playhead indicator ball (neon pink)
+  updatePlayheadBall();
+}
+
+function updatePlayheadBall() {
+  if (!motionPathGroup) return;
+
+  // Find and remove existing playhead ball
+  const oldBall = motionPathGroup.getObjectByName("PlayheadBall");
+  if (oldBall) {
+    motionPathGroup.remove(oldBall);
+    if (oldBall.geometry) oldBall.geometry.dispose();
+    if (oldBall.material) oldBall.material.dispose();
+  }
+
+  const obj = state.selectedObject;
+  if (!obj || !obj.userData || !obj.userData.animationTracks) return;
+
+  const tracks = obj.userData.animationTracks;
+  if (!tracks['position.x'] && !tracks['position.y'] && !tracks['position.z']) return;
+
+  const t = state.timeline.currentTime;
+  const x = tracks['position.x'] ? evaluateTrack(tracks['position.x'], t) : obj.position.x;
+  const y = tracks['position.y'] ? evaluateTrack(tracks['position.y'], t) : obj.position.y;
+  const z = tracks['position.z'] ? evaluateTrack(tracks['position.z'], t) : obj.position.z;
+
+  const ballGeo = new THREE.SphereGeometry(0.14, 8, 8);
+  const ballMat = new THREE.MeshBasicMaterial({
+    color: 0xff3366
+  });
+  const ball = new THREE.Mesh(ballGeo, ballMat);
+  ball.position.set(x, y, z);
+  ball.name = "PlayheadBall";
+  motionPathGroup.add(ball);
+}

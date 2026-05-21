@@ -7,6 +7,26 @@ let editData = null;
 let gizmoManager = null;
 let isActive = false;
 
+// Helper to find all edges whose endpoints are spatially coincident
+function getSiblingEdges(edgeKey, editData) {
+  const siblings = new Set();
+  const edge = editData.edges.find(e => e.key === edgeKey);
+  if (!edge) return siblings;
+
+  const g1 = editData.vertexToGroupIndex[edge.v1];
+  const g2 = editData.vertexToGroupIndex[edge.v2];
+
+  editData.edges.forEach(e => {
+    const eg1 = editData.vertexToGroupIndex[e.v1];
+    const eg2 = editData.vertexToGroupIndex[e.v2];
+    if ((g1 === eg1 && g2 === eg2) || (g1 === eg2 && g2 === eg1)) {
+      siblings.add(e.key);
+    }
+  });
+
+  return siblings;
+}
+
 // Drag/box selection state
 let pointerDownPos = null; // {x, y, clientX, clientY}
 let isBoxSelecting = false;
@@ -284,7 +304,8 @@ function boxSelectVertices(left, right, top, bottom) {
     const worldPos = editData.getVertexWorldPos(i);
     const screenPos = projectToScreen(worldPos);
     if (isInBox(screenPos, left, right, top, bottom)) {
-      state.selectedVertices.add(i);
+      const siblings = editData.vertexToGroup ? (editData.vertexToGroup[i] || [i]) : [i];
+      siblings.forEach(idx => state.selectedVertices.add(idx));
     }
   }
   gizmoManager.updateVertexHighlight(state.selectedVertices);
@@ -300,7 +321,8 @@ function boxSelectEdges(left, right, top, bottom) {
     const sp2 = projectToScreen(wp2);
     // Select edge if both endpoints are in box
     if (isInBox(sp1, left, right, top, bottom) && isInBox(sp2, left, right, top, bottom)) {
-      state.selectedEdges.add(edge.key);
+      const siblings = getSiblingEdges(edge.key, editData);
+      siblings.forEach(key => state.selectedEdges.add(key));
     }
   }
   gizmoManager.updateEdgeHighlight(state.selectedEdges);
@@ -315,12 +337,21 @@ function boxSelectFaces(left, right, top, bottom) {
     const wpB = editData.getVertexWorldPos(face.b);
     const wpC = editData.getVertexWorldPos(face.c);
 
-    // Select face if centroid is in box
-    const centroid = new THREE.Vector3(
-      (wpA.x + wpB.x + wpC.x) / 3,
-      (wpA.y + wpB.y + wpC.y) / 3,
-      (wpA.z + wpB.z + wpC.z) / 3
-    );
+    let centroid;
+    if (face.d !== undefined && face.d !== null && face.d !== face.c) {
+      const wpD = editData.getVertexWorldPos(face.d);
+      centroid = new THREE.Vector3(
+        (wpA.x + wpB.x + wpC.x + wpD.x) / 4,
+        (wpA.y + wpB.y + wpC.y + wpD.y) / 4,
+        (wpA.z + wpB.z + wpC.z + wpD.z) / 4
+      );
+    } else {
+      centroid = new THREE.Vector3(
+        (wpA.x + wpB.x + wpC.x) / 3,
+        (wpA.y + wpB.y + wpC.y) / 3,
+        (wpA.z + wpB.z + wpC.z) / 3
+      );
+    }
     const screenPos = projectToScreen(centroid);
     if (isInBox(screenPos, left, right, top, bottom)) {
       state.selectedFaces.add(i);
@@ -385,15 +416,17 @@ function clickSelectVertex(shiftKey, clientX, clientY) {
   console.log("[editSelection] clickSelectVertex. closestVertexIndex:", closestVertexIndex, "closestDist:", closestDist);
 
   if (closestVertexIndex !== -1) {
+    const siblings = editData.vertexToGroup ? (editData.vertexToGroup[closestVertexIndex] || [closestVertexIndex]) : [closestVertexIndex];
     if (shiftKey) {
-      if (state.selectedVertices.has(closestVertexIndex)) {
-        state.selectedVertices.delete(closestVertexIndex);
+      const hasAny = siblings.some(idx => state.selectedVertices.has(idx));
+      if (hasAny) {
+        siblings.forEach(idx => state.selectedVertices.delete(idx));
       } else {
-        state.selectedVertices.add(closestVertexIndex);
+        siblings.forEach(idx => state.selectedVertices.add(idx));
       }
     } else {
       state.selectedVertices.clear();
-      state.selectedVertices.add(closestVertexIndex);
+      siblings.forEach(idx => state.selectedVertices.add(idx));
     }
   } else {
     if (!shiftKey) {
@@ -434,15 +467,17 @@ function clickSelectEdge(shiftKey, clientX, clientY) {
   console.log("[editSelection] closestEdgeKey:", closestEdgeKey, "closestDist:", closestDist);
 
   if (closestEdgeKey) {
+    const siblings = getSiblingEdges(closestEdgeKey, editData);
     if (shiftKey) {
-      if (state.selectedEdges.has(closestEdgeKey)) {
-        state.selectedEdges.delete(closestEdgeKey);
+      const hasAny = Array.from(siblings).some(key => state.selectedEdges.has(key));
+      if (hasAny) {
+        siblings.forEach(key => state.selectedEdges.delete(key));
       } else {
-        state.selectedEdges.add(closestEdgeKey);
+        siblings.forEach(key => state.selectedEdges.add(key));
       }
     } else {
       state.selectedEdges.clear();
-      state.selectedEdges.add(closestEdgeKey);
+      siblings.forEach(key => state.selectedEdges.add(key));
     }
   } else {
     if (!shiftKey) {
@@ -481,15 +516,21 @@ function clickSelectFace(raycaster, shiftKey) {
     console.log("[editSelection] Hit face index:", faceIndex);
 
     if (faceIndex !== undefined && faceIndex !== null) {
-      if (shiftKey) {
-        if (state.selectedFaces.has(faceIndex)) {
-          state.selectedFaces.delete(faceIndex);
+      const hitQuad = editData.faces.find(q => q.triIndices && q.triIndices.includes(faceIndex));
+      const quadIdx = hitQuad ? hitQuad.faceIndex : null;
+      console.log("[editSelection] Mapped hit face index to Quad:", quadIdx);
+
+      if (quadIdx !== null) {
+        if (shiftKey) {
+          if (state.selectedFaces.has(quadIdx)) {
+            state.selectedFaces.delete(quadIdx);
+          } else {
+            state.selectedFaces.add(quadIdx);
+          }
         } else {
-          state.selectedFaces.add(faceIndex);
+          state.selectedFaces.clear();
+          state.selectedFaces.add(quadIdx);
         }
-      } else {
-        state.selectedFaces.clear();
-        state.selectedFaces.add(faceIndex);
       }
     }
   } else {
