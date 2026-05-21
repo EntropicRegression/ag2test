@@ -23,6 +23,17 @@ class EditorState {
     this.gridHelper = null;
     this.axesHelper = null;
     
+    // Active Viewport Camera (could be state.camera or a scene camera)
+    this.activeViewportCamera = null;
+
+    // Timeline state
+    this.timeline = {
+      currentTime: 0.0,
+      duration: 10.0,
+      isPlaying: false,
+      fps: 30
+    };
+
     // Edit Mode state
     this.editorMode = 'object';          // 'object' | 'edit'
     this.editSubMode = 'vertex';         // 'vertex' | 'edge' | 'face'
@@ -42,7 +53,9 @@ class EditorState {
       color: [],
       history: [],
       modeChange: [],
-      editSelection: []
+      editSelection: [],
+      cameraChange: [],
+      timelineChange: []
     };
   }
 
@@ -182,6 +195,33 @@ class EditorState {
       edges: this.selectedEdges,
       faces: this.selectedFaces
     });
+  }
+
+  // Set active viewport camera for rendering
+  setActiveViewportCamera(camera) {
+    if (this.activeViewportCamera === camera) return;
+    this.activeViewportCamera = camera;
+
+    // Toggle OrbitControls since it is only meant for editor camera (state.camera)
+    if (this.orbitControls) {
+      this.orbitControls.enabled = (!camera || camera === this.camera);
+    }
+
+    this.triggerEvent('cameraChange', camera);
+  }
+
+  // Update timeline time
+  setAnimationTime(time, isUserInteracting = false) {
+    const clampedTime = Math.max(0, Math.min(this.timeline.duration, time));
+    this.timeline.currentTime = clampedTime;
+    
+    this.triggerEvent('timelineChange', { time: clampedTime, isUserInteracting });
+  }
+
+  // Toggle animation play/pause state
+  togglePlay() {
+    this.timeline.isPlaying = !this.timeline.isPlaying;
+    this.triggerEvent('timelineChange', { isPlaying: this.timeline.isPlaying });
   }
 }
 

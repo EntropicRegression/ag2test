@@ -9,6 +9,7 @@ import { initHierarchy } from './hierarchy.js';
 import { initProperties } from './properties.js';
 import { initBloom } from './bloom.js';
 import { initEditMode } from './editMode.js';
+import { interpolateCamera, updateCameraHelper } from './camera.js';
 
 // Setup elements
 const container = document.getElementById('canvas-container');
@@ -83,6 +84,40 @@ function init() {
   initProperties();
   initEditMode();
 
+  // State event listeners for Camera and Timeline synchronization
+  state.addEventListener('cameraChange', (activeCam) => {
+    const renderingCam = activeCam || state.camera;
+    
+    // Sync aspect ratio and helper when switching viewports
+    if (activeCam && activeCam !== state.camera) {
+      const width = container.clientWidth;
+      const height = container.clientHeight;
+      activeCam.aspect = width / height;
+      activeCam.updateProjectionMatrix();
+      
+      const parentGroup = activeCam.parent;
+      if (parentGroup && parentGroup.isSceneCamera) {
+        updateCameraHelper(parentGroup);
+      }
+    }
+    
+    // Sync TransformControls camera reference so gizmo drags correctly through new perspective
+    if (state.transformControls) {
+      state.transformControls.camera = renderingCam;
+    }
+  });
+
+  state.addEventListener('timelineChange', (data) => {
+    // Interpolate all cameras immediately when time updates ( scrub / play / undo )
+    if (data.time !== undefined) {
+      scene.traverse(child => {
+        if (child.isSceneCamera) {
+          interpolateCamera(child, data.time);
+        }
+      });
+    }
+  });
+
   // 8. Event Listeners
   window.addEventListener('resize', onWindowResize);
   
@@ -103,9 +138,20 @@ function init() {
 function onWindowResize() {
   const width = container.clientWidth;
   const height = container.clientHeight;
+  const aspect = width / height;
   
-  state.camera.aspect = width / height;
+  state.camera.aspect = aspect;
   state.camera.updateProjectionMatrix();
+  
+  // Resize active viewport camera if set
+  if (state.activeViewportCamera) {
+    state.activeViewportCamera.aspect = aspect;
+    state.activeViewportCamera.updateProjectionMatrix();
+    const parentGroup = state.activeViewportCamera.parent;
+    if (parentGroup && parentGroup.isSceneCamera) {
+      updateCameraHelper(parentGroup);
+    }
+  }
   
   state.renderer.setSize(width, height);
   if (state.effectComposer) {
@@ -113,21 +159,44 @@ function onWindowResize() {
   }
 }
 
+let lastFrameTime = performance.now();
+
 function animate() {
   requestAnimationFrame(animate);
+
+  const now = performance.now();
+  const deltaTime = (now - lastFrameTime) / 1000;
+  lastFrameTime = now;
+
+  // Drive animation timeline playback
+  if (state.timeline.isPlaying) {
+    let newTime = state.timeline.currentTime + deltaTime;
+    if (newTime >= state.timeline.duration) {
+      newTime = 0.0; // Loop playback
+    }
+    state.setAnimationTime(newTime, false);
+  }
 
   // Update OrbitControls
   if (state.orbitControls) {
     state.orbitControls.update();
   }
 
+  // Get active rendering camera
+  const renderingCamera = state.activeViewportCamera || state.camera;
+
   // Render — simple single-pass approach
   if (state.isBloomEnabled && state.effectComposer) {
+    // Swap camera dynamically in Bloom Pass RenderPass
+    const renderPass = state.effectComposer.passes[0];
+    if (renderPass) {
+      renderPass.camera = renderingCamera;
+    }
     // EffectComposer handles everything: renders scene with bloom and outputs to screen
     state.effectComposer.render();
   } else {
     // Standard render without bloom
-    state.renderer.render(state.scene, state.camera);
+    state.renderer.render(state.scene, renderingCamera);
   }
 
   // Calculate FPS

@@ -1,7 +1,7 @@
 // toolbar.js - Toolbar Buttons, Colors Palette and Keyboard Shortcuts
 import * as THREE from 'three';
 import { state } from './state.js';
-import { createGeometry, createLight, createEmptyGroup, deleteSelectedObject, focusCameraOnObject } from './objects.js';
+import { createGeometry, createLight, createEmptyGroup, createCamera, deleteSelectedObject, focusCameraOnObject } from './objects.js';
 import { ChangeColorCommand, BatchColorCommand } from './history.js';
 import { triggerImport } from './io.js';
 import { toggleEditMode, getGizmoManager } from './editMode.js';
@@ -41,6 +41,24 @@ export function initToolbar() {
   const statusUndoDepth = document.getElementById('status-undo-depth');
   const colorPreviewCircle = btnColorMenu.querySelector('.color-preview-circle');
 
+  // Camera switcher elements
+  const btnCameraSelect = document.getElementById('btn-camera-select');
+  const cameraSelectDropdown = document.getElementById('camera-select-dropdown');
+  const activeCameraName = document.getElementById('active-camera-name');
+
+  // Timeline elements
+  const btnTimelinePrev = document.getElementById('btn-timeline-prev');
+  const btnTimelinePlay = document.getElementById('btn-timeline-play');
+  const btnTimelineStop = document.getElementById('btn-timeline-stop');
+  const btnTimelineNext = document.getElementById('btn-timeline-next');
+  const btnTimelineKeyframe = document.getElementById('btn-timeline-keyframe');
+  const btnTimelineClearKeys = document.getElementById('btn-timeline-clear-keys');
+  const timelineTimeCurrent = document.getElementById('timeline-time-current');
+  const timelineTimeDuration = document.getElementById('timeline-time-duration');
+  const timelineScrubber = document.getElementById('timeline-scrubber');
+  const timelineKeyframesTrack = document.getElementById('timeline-keyframes-track');
+  const iconPlay = document.getElementById('icon-play');
+
   // --- DROPDOWN MENUS ---
   btnAddMenu.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -58,6 +76,7 @@ export function initToolbar() {
   document.addEventListener('click', () => {
     addMenu.classList.add('hidden');
     colorMenu.classList.add('hidden');
+    cameraSelectDropdown.classList.add('hidden');
   });
 
   // Prevent closing when clicking inside color menu
@@ -73,6 +92,8 @@ export function initToolbar() {
         createEmptyGroup();
       } else if (type.endsWith('-light')) {
         createLight(type);
+      } else if (type === 'camera') {
+        createCamera();
       } else {
         createGeometry(type);
       }
@@ -355,6 +376,19 @@ export function initToolbar() {
       case 'g':
         btnToggleGrid.click();
         break;
+      case ' ':
+        e.preventDefault();
+        state.togglePlay();
+        break;
+      case 'k':
+        e.preventDefault();
+        const camObj = state.selectedObject;
+        if (camObj && camObj.isSceneCamera) {
+          import('./camera.js').then(({ addCameraKeyframe }) => {
+            addCameraKeyframe(camObj, state.timeline.currentTime);
+          });
+        }
+        break;
       // Quick preset swatches 1-6
       case '1': applyColor('#00ffff'); break;
       case '2': applyColor('#bf00ff'); break;
@@ -453,5 +487,170 @@ export function initToolbar() {
     } else {
       statusEditInfo.classList.add('hidden');
     }
+  });
+
+  // --- CAMERA VIEWPORT SWITCHER WIRING ---
+  function updateCameraDropdown() {
+    cameraSelectDropdown.innerHTML = '';
+    
+    // Editor Camera Option
+    const editorCamBtn = document.createElement('button');
+    editorCamBtn.className = 'menu-item';
+    if (!state.activeViewportCamera || state.activeViewportCamera === state.camera) {
+      editorCamBtn.classList.add('active');
+    }
+    editorCamBtn.innerHTML = '<i data-lucide="video"></i>自由視角 (Editor Camera)';
+    editorCamBtn.addEventListener('click', () => {
+      state.setActiveViewportCamera(state.camera);
+      cameraSelectDropdown.classList.add('hidden');
+    });
+    cameraSelectDropdown.appendChild(editorCamBtn);
+    
+    // Scene Cameras from scene children
+    state.scene.traverse(child => {
+      if (child.isSceneCamera) {
+        const cameraInstance = child.getObjectByName("CameraInstance");
+        if (cameraInstance) {
+          const camBtn = document.createElement('button');
+          camBtn.className = 'menu-item';
+          if (state.activeViewportCamera === cameraInstance) {
+            camBtn.classList.add('active');
+          }
+          camBtn.innerHTML = `<i data-lucide="video"></i>${child.name}`;
+          camBtn.addEventListener('click', () => {
+            state.setActiveViewportCamera(cameraInstance);
+            cameraSelectDropdown.classList.add('hidden');
+          });
+          cameraSelectDropdown.appendChild(camBtn);
+        }
+      }
+    });
+    
+    if (window.lucide) window.lucide.createIcons();
+  }
+
+  btnCameraSelect.addEventListener('click', (e) => {
+    e.stopPropagation();
+    updateCameraDropdown();
+    cameraSelectDropdown.classList.toggle('hidden');
+    addMenu.classList.add('hidden');
+    colorMenu.classList.add('hidden');
+  });
+
+  state.addEventListener('cameraChange', (activeCam) => {
+    if (!activeCam || activeCam === state.camera) {
+      activeCameraName.textContent = "自由視角 (Editor Camera)";
+    } else {
+      let camName = "Scene Camera";
+      state.scene.traverse(child => {
+        if (child.isSceneCamera && child.getObjectByName("CameraInstance") === activeCam) {
+          camName = child.name;
+        }
+      });
+      activeCameraName.textContent = camName;
+    }
+  });
+
+  // --- ANIMATION TIMELINE WIRING ---
+  timelineScrubber.addEventListener('input', (e) => {
+    const time = parseFloat(e.target.value);
+    state.setAnimationTime(time, true);
+  });
+
+  btnTimelinePlay.addEventListener('click', () => {
+    state.togglePlay();
+  });
+
+  btnTimelineStop.addEventListener('click', () => {
+    if (state.timeline.isPlaying) {
+      state.togglePlay();
+    }
+    state.setAnimationTime(0.0, true);
+  });
+
+  btnTimelinePrev.addEventListener('click', () => {
+    const step = 1 / state.timeline.fps;
+    state.setAnimationTime(state.timeline.currentTime - step, true);
+  });
+
+  btnTimelineNext.addEventListener('click', () => {
+    const step = 1 / state.timeline.fps;
+    state.setAnimationTime(state.timeline.currentTime + step, true);
+  });
+
+  btnTimelineKeyframe.addEventListener('click', () => {
+    const obj = state.selectedObject;
+    if (obj && obj.isSceneCamera) {
+      import('./camera.js').then(({ addCameraKeyframe }) => {
+        addCameraKeyframe(obj, state.timeline.currentTime);
+      });
+    } else {
+      alert("請先選擇一個場景攝影機來新增關鍵影格！");
+    }
+  });
+
+  btnTimelineClearKeys.addEventListener('click', () => {
+    const obj = state.selectedObject;
+    if (obj && obj.isSceneCamera) {
+      if (confirm("確定要清除此攝影機的所有動畫關鍵影格嗎？")) {
+        import('./camera.js').then(({ clearCameraKeyframes }) => {
+          clearCameraKeyframes(obj);
+        });
+      }
+    } else {
+      alert("請先選擇一個場景攝影機來清除關鍵影格！");
+    }
+  });
+
+  state.addEventListener('timelineChange', (data) => {
+    if (data.time !== undefined) {
+      timelineScrubber.value = data.time;
+      timelineTimeCurrent.textContent = `${data.time.toFixed(1)}s`;
+    }
+    
+    if (data.isPlaying !== undefined) {
+      if (data.isPlaying) {
+        btnTimelinePlay.classList.add('active');
+        iconPlay.setAttribute('data-lucide', 'pause');
+      } else {
+        btnTimelinePlay.classList.remove('active');
+        iconPlay.setAttribute('data-lucide', 'play');
+      }
+      if (window.lucide) window.lucide.createIcons();
+    }
+  });
+
+  // Keyframe track markers visualization
+  function updateScrubberMarkers(cameraGroup) {
+    timelineKeyframesTrack.innerHTML = '';
+    if (!cameraGroup || !cameraGroup.isSceneCamera) return;
+    
+    const keyframes = cameraGroup.userData.keyframes || [];
+    const duration = state.timeline.duration || 10.0;
+    
+    keyframes.forEach(kf => {
+      const pct = (kf.time / duration) * 100;
+      const marker = document.createElement('div');
+      marker.className = 'timeline-keyframe-marker';
+      marker.style.left = `${pct}%`;
+      marker.title = `關鍵影格: ${kf.time.toFixed(2)}s`;
+      
+      // Click marker to jump directly to that time
+      marker.addEventListener('click', (e) => {
+        e.stopPropagation();
+        state.setAnimationTime(kf.time, true);
+      });
+      
+      timelineKeyframesTrack.appendChild(marker);
+    });
+  }
+
+  state.addEventListener('selection', (obj) => {
+    updateScrubberMarkers(obj);
+  });
+  
+  state.addEventListener('cameraChange', () => {
+    const obj = state.selectedObject;
+    updateScrubberMarkers(obj);
   });
 }

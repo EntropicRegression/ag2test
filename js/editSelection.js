@@ -57,7 +57,7 @@ export function initEditSelection(data, gizmo) {
           -((e.clientY - rect.top) / rect.height) * 2 + 1
         );
         const raycaster = new THREE.Raycaster();
-        raycaster.setFromCamera(mouse, state.camera);
+        raycaster.setFromCamera(mouse, state.activeViewportCamera || state.camera);
 
         const gizmoHelper = state.transformControls.getHelper();
         const gizmoIntersects = raycaster.intersectObject(gizmoHelper, true).filter(hit => {
@@ -207,7 +207,7 @@ function handleClickSelect(e, shiftKey) {
   );
 
   const raycaster = new THREE.Raycaster();
-  raycaster.setFromCamera(mouse, state.camera);
+  raycaster.setFromCamera(mouse, state.activeViewportCamera || state.camera);
 
   console.log("[editSelection] handleClickSelect. subMode:", state.editSubMode, "mouse:", mouse);
 
@@ -264,7 +264,7 @@ function handleBoxSelect(e, shiftKey) {
 
 // Project a world position to normalized screen coords (0..1)
 function projectToScreen(worldPos) {
-  const v = worldPos.clone().project(state.camera);
+  const v = worldPos.clone().project(state.activeViewportCamera || state.camera);
   return {
     x: (v.x + 1) / 2,    // 0..1 from left
     y: (-v.y + 1) / 2,    // 0..1 from top
@@ -334,7 +334,7 @@ function boxSelectFaces(left, right, top, bottom) {
 function projectToClientCoords(worldPos) {
   const dom = state.renderer.domElement;
   const rect = dom.getBoundingClientRect();
-  const v = worldPos.clone().project(state.camera);
+  const v = worldPos.clone().project(state.activeViewportCamera || state.camera);
   return {
     x: rect.left + (v.x + 1) * rect.width / 2,
     y: rect.top + (-v.y + 1) * rect.height / 2,

@@ -35,7 +35,7 @@ export function initSelection() {
     );
 
     const raycaster = new THREE.Raycaster();
-    raycaster.setFromCamera(mouse, state.camera);
+    raycaster.setFromCamera(mouse, state.activeViewportCamera || state.camera);
 
     // Prevent selection from clearing when clicking directly on TransformControls gizmo axes
     if (state.transformControls) {

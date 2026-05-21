@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { state } from './state.js';
 import { ChangePropertyCommand, ChangeColorCommand } from './history.js';
+import { addCameraKeyframe, clearCameraKeyframes } from './camera.js';
 
 // DOM elements
 const noSelectionMsg = document.getElementById('no-selection-message');
@@ -27,6 +28,12 @@ const propVisible = document.getElementById('prop-visible');
 const lightPropsGroup = document.querySelector('.light-properties');
 const propLightIntensity = document.getElementById('prop-light-intensity');
 
+const cameraPropsGroup = document.querySelector('.camera-properties');
+const propCameraFov = document.getElementById('prop-camera-fov');
+const btnCameraViewActive = document.getElementById('btn-camera-view-active');
+const btnCameraKeyframeAdd = document.getElementById('btn-camera-keyframe-add');
+const btnCameraKeyframesClear = document.getElementById('btn-camera-keyframes-clear');
+
 // Keep track of old values before change starts to log in Undo stack
 let valueBeforeEdit = null;
 
@@ -39,6 +46,9 @@ export function initProperties() {
   // Listen to state changes
   state.addEventListener('selection', updatePanel);
   state.addEventListener('properties', updatePanel);
+  state.addEventListener('cameraChange', () => {
+    updatePanel(state.selectedObject);
+  });
 
   // Listen for Edit Mode selection changes
   state.addEventListener('editSelection', updateEditModePanel);
@@ -67,6 +77,7 @@ function disableNonVertexFields(disabled) {
   propColor.disabled = disabled;
   propVisible.disabled = disabled;
   propLightIntensity.disabled = disabled;
+  if (propCameraFov) propCameraFov.disabled = disabled;
   
   if (disabled) {
     // Clear values in properties panel during edit mode
@@ -82,6 +93,7 @@ function disableNonVertexFields(disabled) {
     propColorHex.textContent = 'N/A';
     propVisible.checked = false;
     lightPropsGroup.classList.add('hidden');
+    cameraPropsGroup.classList.add('hidden');
   }
 }
 
@@ -252,6 +264,27 @@ function updatePanel(targetObj) {
   } else {
     lightPropsGroup.classList.add('hidden');
   }
+
+  // 8. Camera Properties
+  if (obj.isSceneCamera) {
+    cameraPropsGroup.classList.remove('hidden');
+    if (activeEl !== propCameraFov) {
+      propCameraFov.value = Math.round(obj.fov);
+    }
+    
+    // Check active status
+    const cameraInstance = obj.getObjectByName("CameraInstance");
+    if (cameraInstance && state.activeViewportCamera === cameraInstance) {
+      btnCameraViewActive.classList.add('active');
+      btnCameraViewActive.innerHTML = '<i data-lucide="video-off" class="inline-icon"></i> 退出相機視角';
+    } else {
+      btnCameraViewActive.classList.remove('active');
+      btnCameraViewActive.innerHTML = '<i data-lucide="video" class="inline-icon"></i> 進入此相機視角';
+    }
+    if (window.lucide) window.lucide.createIcons();
+  } else {
+    cameraPropsGroup.classList.add('hidden');
+  }
 }
 
 function setupInputListeners() {
@@ -260,7 +293,7 @@ function setupInputListeners() {
     propName, propPosX, propPosY, propPosZ,
     propRotX, propRotY, propRotZ,
     propScaleX, propScaleY, propScaleZ,
-    propLightIntensity
+    propLightIntensity, propCameraFov
   ];
 
   inputs.forEach(input => {
@@ -296,6 +329,7 @@ function setupInputListeners() {
       else if (propId === 'prop-scale-y') valueBeforeEdit = obj.scale.y;
       else if (propId === 'prop-scale-z') valueBeforeEdit = obj.scale.z;
       else if (propId === 'prop-light-intensity') valueBeforeEdit = obj.intensity;
+      else if (propId === 'prop-camera-fov') valueBeforeEdit = obj.fov;
     });
 
     // Real-time viewport feedback while typing
@@ -360,6 +394,8 @@ function setupInputListeners() {
         obj.scale.z = val;
       } else if (propId === 'prop-light-intensity' && obj.isLight) {
         obj.intensity = val;
+      } else if (propId === 'prop-camera-fov' && obj.isSceneCamera) {
+        obj.fov = val;
       }
       
       obj.updateMatrixWorld();
@@ -422,6 +458,7 @@ function setupInputListeners() {
       else if (propId === 'prop-scale-y') { propPath = 'scale.y'; }
       else if (propId === 'prop-scale-z') { propPath = 'scale.z'; }
       else if (propId === 'prop-light-intensity') propPath = 'intensity';
+      else if (propId === 'prop-camera-fov') propPath = 'fov';
 
       if (valueBeforeEdit !== finalVal) {
         const cmd = new ChangePropertyCommand(obj, propPath, valueBeforeEdit, finalVal);
@@ -478,6 +515,40 @@ function setupInputListeners() {
     if (obj.visible !== visible) {
       const cmd = new ChangePropertyCommand(obj, 'visible', obj.visible, visible);
       state.history.execute(cmd);
+    }
+  });
+
+  // Camera specific action buttons
+  btnCameraViewActive.addEventListener('click', () => {
+    const obj = state.selectedObject;
+    if (!obj || !obj.isSceneCamera) return;
+    
+    const cameraInstance = obj.getObjectByName("CameraInstance");
+    if (!cameraInstance) return;
+    
+    if (state.activeViewportCamera === cameraInstance) {
+      // Revert to free orbit editor camera
+      state.setActiveViewportCamera(state.camera);
+    } else {
+      // Set to this scene camera
+      state.setActiveViewportCamera(cameraInstance);
+    }
+  });
+
+  btnCameraKeyframeAdd.addEventListener('click', () => {
+    const obj = state.selectedObject;
+    if (!obj || !obj.isSceneCamera) return;
+    
+    // Add keyframe at current timeline time
+    addCameraKeyframe(obj, state.timeline.currentTime);
+  });
+
+  btnCameraKeyframesClear.addEventListener('click', () => {
+    const obj = state.selectedObject;
+    if (!obj || !obj.isSceneCamera) return;
+    
+    if (confirm("確定要清除此攝影機的所有動畫關鍵影格嗎？")) {
+      clearCameraKeyframes(obj);
     }
   });
 }

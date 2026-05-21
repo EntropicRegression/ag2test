@@ -61,7 +61,7 @@ function getSelectedVertices() {
 function projectToClientCoords(worldPos) {
   const dom = state.renderer.domElement;
   const rect = dom.getBoundingClientRect();
-  const v = worldPos.clone().project(state.camera);
+  const v = worldPos.clone().project(state.activeViewportCamera || state.camera);
   return {
     x: rect.left + (v.x + 1) * rect.width / 2,
     y: rect.top + (-v.y + 1) * rect.height / 2,
@@ -114,7 +114,8 @@ export function initEditTools(data, gizmo) {
     // Create drag plane facing camera at the clicked vertex world position
     const hitPoint = editData.getVertexWorldPos(clickedVertexIndex);
     const cameraDir = new THREE.Vector3();
-    state.camera.getWorldDirection(cameraDir);
+    const cameraInstance = state.activeViewportCamera || state.camera;
+    cameraInstance.getWorldDirection(cameraDir);
     dragPlane.setFromNormalAndCoplanarPoint(cameraDir.negate(), hitPoint);
 
     // Calculate offset from hit to first selected vertex world pos
@@ -138,7 +139,7 @@ export function initEditTools(data, gizmo) {
     );
 
     const raycaster = new THREE.Raycaster();
-    raycaster.setFromCamera(mouse, state.camera);
+    raycaster.setFromCamera(mouse, state.activeViewportCamera || state.camera);
 
     // Find intersection with drag plane
     const planeIntersect = new THREE.Vector3();

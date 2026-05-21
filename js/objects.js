@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { state } from './state.js';
 import { AddObjectCommand, RemoveObjectCommand } from './history.js';
+import { createSceneCamera, destroyCameraHelper } from './camera.js';
 
 let objectCount = 0;
 
@@ -120,6 +121,13 @@ export function createEmptyGroup() {
   state.history.execute(cmd);
 }
 
+// Create scene camera group
+export function createCamera() {
+  const cameraGroup = createSceneCamera();
+  const cmd = new AddObjectCommand(cameraGroup);
+  state.history.execute(cmd);
+}
+
 // Delete Selected Object
 export function deleteSelectedObject() {
   const obj = state.selectedObject;
@@ -127,6 +135,16 @@ export function deleteSelectedObject() {
 
   // Protect system scene, grid, and camera from deletion
   if (obj === state.scene || obj.isGridHelper || obj.isAxesHelper) return;
+
+  // If deleting the active viewport camera, revert to editor camera
+  if (obj.isSceneCamera) {
+    const camInstance = obj.getObjectByName("CameraInstance");
+    if (camInstance && state.activeViewportCamera === camInstance) {
+      state.setActiveViewportCamera(state.camera);
+    }
+    // Destroy helper when permanently deleting from memory (Command handles standard hide)
+    destroyCameraHelper(obj);
+  }
 
   const cmd = new RemoveObjectCommand(obj);
   state.history.execute(cmd);
