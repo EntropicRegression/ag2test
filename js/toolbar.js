@@ -28,6 +28,7 @@ export function initToolbar() {
   const swatches = document.querySelectorAll('.palette-swatch');
   const colorTargetSelected = document.getElementById('color-target-selected');
   
+  const btnToggleGrid = document.getElementById('btn-toggle-grid');
   const btnToggleBloom = document.getElementById('btn-toggle-bloom');
   const bloomStrengthSlider = document.getElementById('bloom-strength-slider');
   const bloomStrengthValue = document.getElementById('bloom-strength-value');
@@ -188,6 +189,18 @@ export function initToolbar() {
     colorPreviewCircle.style.boxShadow = `0 0 6px ${hex}`;
   });
 
+  // --- GRID TOGGLE ---
+  btnToggleGrid.addEventListener('click', () => {
+    state.isGridVisible = !state.isGridVisible;
+    btnToggleGrid.classList.toggle('active', state.isGridVisible);
+    if (state.gridHelper) {
+      state.gridHelper.visible = state.isGridVisible;
+    }
+    if (state.axesHelper) {
+      state.axesHelper.visible = state.isGridVisible;
+    }
+  });
+
   // --- BLOOM EFFECTS TOGGLE ---
   btnToggleBloom.addEventListener('click', () => {
     state.isBloomEnabled = !state.isBloomEnabled;
@@ -338,6 +351,9 @@ export function initToolbar() {
         break;
       case 'b':
         btnToggleBloom.click();
+        break;
+      case 'g':
+        btnToggleGrid.click();
         break;
       // Quick preset swatches 1-6
       case '1': applyColor('#00ffff'); break;

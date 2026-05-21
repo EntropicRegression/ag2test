@@ -19,6 +19,9 @@ class EditorState {
     this.colorTargetMode = "selected"; // "selected" or "all"
     this.isBloomEnabled = true;
     this.bloomStrength = 1.6;
+    this.isGridVisible = true;
+    this.gridHelper = null;
+    this.axesHelper = null;
     
     // Edit Mode state
     this.editorMode = 'object';          // 'object' | 'edit'

@@ -53,10 +53,12 @@ function init() {
   gridHelper.isGridHelper = true;
   gridHelper.position.y = -0.01; // Slightly below zero to avoid z-fighting
   scene.add(gridHelper);
+  state.gridHelper = gridHelper;
 
   const axesHelper = new THREE.AxesHelper(5);
   axesHelper.isAxesHelper = true;
   scene.add(axesHelper);
+  state.axesHelper = axesHelper;
 
   // 5. Ambient Light (Low intensity, since we want neon wireframe focus)
   const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
