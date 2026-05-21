@@ -57,15 +57,40 @@ class EditorState {
     }
   }
 
+  // Check if an object is the current edit target or a parent container of the edit target mesh
+  isEditTarget(object) {
+    if (!this.editTargetMesh) return false;
+    if (object === this.editTargetMesh) return true;
+    
+    let isParent = false;
+    if (object && object.traverse) {
+      object.traverse(child => {
+        if (child === this.editTargetMesh) {
+          isParent = true;
+        }
+      });
+    }
+    return isParent;
+  }
+
   // Select an object
   setSelectedObject(object) {
     if (this.selectedObject === object) return;
+    
+    // If in edit mode and selecting a different object (or null), exit edit mode first
+    if (this.editorMode === 'edit' && !this.isEditTarget(object)) {
+      this.exitEditMode();
+    }
     
     this.selectedObject = object;
     
     // Sync TransformControls attachment
     if (this.transformControls) {
-      if (object && object.isObject3D && !object.isScene && !object.isGridHelper && !object.isAxesHelper) {
+      // In Edit Mode, don't attach TransformControls directly to the mesh/object being edited.
+      // The Edit Mode controller will manage attaching it to the sub-elements (gizmoTarget).
+      if (this.editorMode === 'edit' && this.isEditTarget(object)) {
+        // Do nothing, let Edit Mode controller handle the gizmoTarget attachment
+      } else if (object && object.isObject3D && !object.isScene && !object.isGridHelper && !object.isAxesHelper) {
         this.transformControls.attach(object);
       } else {
         this.transformControls.detach();
@@ -98,6 +123,7 @@ class EditorState {
 
   // Enter Edit Mode for a mesh
   enterEditMode(mesh) {
+    if (this.editorMode === 'edit') return false;
     if (!mesh || !mesh.isMesh) return false;
     this.editorMode = 'edit';
     this.editTargetMesh = mesh;

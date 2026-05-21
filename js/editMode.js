@@ -278,18 +278,46 @@ function onExitEditMode() {
     state.transformControls.detach();
   }
 
-  if (gizmoTarget) {
-    state.scene.remove(gizmoTarget);
-  }
-
   // Dispose visual helpers
   if (gizmoManager) {
     gizmoManager.dispose();
   }
 
+  if (gizmoTarget) {
+    state.scene.remove(gizmoTarget);
+    gizmoTarget = null;
+  }
+
   // Deactivate sub-module event listeners
   disposeEditSelection();
   disposeEditTools();
+
+  // Robust scene fallback: sweep and destroy any remaining edit-mode specific objects
+  if (state.scene) {
+    const toRemove = [];
+    state.scene.traverse(child => {
+      if (child.name === '__EditModeHelpers__' || 
+          child.name === '__EditGizmoTarget__' || 
+          child.userData.isEditPickHelper) {
+        toRemove.push(child);
+      }
+    });
+    toRemove.forEach(child => {
+      if (child.parent) {
+        child.parent.remove(child);
+      }
+      child.traverse(subChild => {
+        if (subChild.geometry) subChild.geometry.dispose();
+        if (subChild.material) {
+          if (Array.isArray(subChild.material)) {
+            subChild.material.forEach(m => m.dispose());
+          } else {
+            subChild.material.dispose();
+          }
+        }
+      });
+    });
+  }
 
   editData = null;
 }

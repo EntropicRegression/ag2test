@@ -70,6 +70,8 @@ function projectToClientCoords(worldPos) {
 }
 
 export function initEditTools(data, gizmo) {
+  disposeEditTools();
+
   editData = data;
   gizmoManager = gizmo;
   isActive = true;

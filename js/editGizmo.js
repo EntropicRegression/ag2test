@@ -67,6 +67,31 @@ export class EditGizmoManager {
       this.helperGroup = null;
     }
 
+    // Perform scene-wide cleanup of any duplicate or orphan edit helpers or pickers
+    if (state.scene) {
+      const toRemove = [];
+      state.scene.traverse(child => {
+        if (child.name === '__EditModeHelpers__' || child.name === '__EditGizmoTarget__' || child.userData.isEditPickHelper) {
+          toRemove.push(child);
+        }
+      });
+      toRemove.forEach(child => {
+        if (child.parent) {
+          child.parent.remove(child);
+        }
+        child.traverse(subChild => {
+          if (subChild.geometry) subChild.geometry.dispose();
+          if (subChild.material) {
+            if (Array.isArray(subChild.material)) {
+              subChild.material.forEach(m => m.dispose());
+            } else {
+              subChild.material.dispose();
+            }
+          }
+        });
+      });
+    }
+
     this.vertexPoints = null;
     this.edgeLines = null;
     this.faceOverlayMesh = null;

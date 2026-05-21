@@ -19,6 +19,8 @@ let onPointerMove = null;
 let onPointerUp = null;
 
 export function initEditSelection(data, gizmo) {
+  disposeEditSelection();
+
   editData = data;
   gizmoManager = gizmo;
   isActive = true;
